@@ -19,7 +19,6 @@ __version__ = '1.0'
 
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version, get_distribution
-from ruffus import *
 import datetime
 import socket
 import logging
@@ -71,8 +70,7 @@ CONTAMINANT_READ_COUNT_TRIGGER = 15000
 # These set paths & minimum version requirements. Checked in TODO
 # Keeping a tool somewhere else? Try: 'bowtie2': ('/my/path/to/bowtie2', '2.0.0-beta3')
 TOOLS_AND_VERSIONS = {
-    'bowtie2': ('bowtie2', '2.0.0-beta3'),
-    'NCBI BLAST+': ('blastn', '2.2.25'),
+    'isodist': ('isodist', '2008'),
     'other': ('tool', '1.0'),
 }
 
@@ -151,14 +149,14 @@ class ColorFormatter(logging.Formatter):
 ### ---------------------------------------------
 
 def main():
-    """The main part of our metagenomic pipeline."""
-    global USE_DRMAA, DRMAA_SESSION, CMD_LINE_INPUT_FILES
+    """The main part of our MS analysis pipeline."""
+    global USE_DRMAA, DRMAA_SESSION
 
     # Begin timing execution
 
     starttime = time.time()
 
-    parser = OptionParser(usage="usage: %prog [options] input_file(s)\n\nInput files may be fasta, fastq, or SFF.",
+    parser = OptionParser(usage="usage: %prog [options] input_directory\n\nInput directory must contain:\n\tDTASelect-filter.txt\n\t*.sqt\n\t*.mzXML",
                           version="%prog 1.0")
 
     # OPT:
@@ -193,17 +191,23 @@ def main():
             print "WARNING: This is a Python range, where lists are zero indexed! Are you sure you mean '1'?"
         range_given = True
 
-    if not len(args):
-        parser.error("You must specify one or more input files (.sff, .fa, .fq, ...).\n\nTry --help for help.")
+    if not len(args) == 1:
+        parser.error("You must specify exactly one input directory.\n\nTry --help for help.")
 
-    CMD_LINE_INPUT_FILES = args
+    input_directory = args[0]
 
-    for input_file in CMD_LINE_INPUT_FILES:
-        if not os.access(input_file, os.R_OK):
-            parser.error("Cannot read input file.")
-        # TODO: Remove this, or auto-detect filetype (using mimetypes)?
-        if not input_file.endswith(('.fa', '.fna', '.ffn', '.fasta', '.fastq', '.fq', '.sff')):
-            parser.error("Input filetype not recognized (make sure your files end in something sensible, like .fastq).")
+    if not os.access(input_directory, os.R_OK):
+        parser.error("Cannot read input directory.")
+
+    # Make sure we have some appropriately named input files, so we don't die later.
+    directory_list = os.listdir(input_directory)
+    if 'DTASelect-filter.txt' not in directory_list:
+        parser.error("DTASelect-filter.txt not found in input directory.")
+    if not len([file for file in directory_list if file.endswith('.mzXML')]) == 1:
+        parser.error("Exactly one .mzXML file must be present in the input directory.")
+    if not len([file for file in directory_list if file.endswith('.sqt')]) >= 1:
+        parser.error(".sqt file(s) not found in input directory.")
+
 
     # Let's set up a logging system
     # We log DEBUG and higher to log file, and write INFO and higher to console.
@@ -236,11 +240,26 @@ def main():
     # Check the version numbers, etc.
     pre_run_version_checks()
 
+    
+    ###### More application-specific functions
+    # Parse DTA Select results file
+    dta_select_data = parse_DTASelect(input_directory.rstrip('/') + "/DTASelect-filter.txt")
+
+    # Take the unique DTA Select peptide fragments and run isodist
+    #run_isodist(input_directory.rstrip('/'))
+
+    # Now that we have the isodist predicted spectra, parse the mzXML
+    #mzXML_data = parse_mzXML()
+
     # Let's cook this turkey!
-    pipeline_run([generate_run_summary], verbose = 5)
+    # (actually do comparisons from isodist <-> mzXML spectra)
+    #turkey_cooker(mzXML_data, input_directory.rstrip('/'))
+
+    #pipeline_run([generate_run_summary], verbose = 5)
 
     # Cleanup.
-    DRMAA_SESSION.exit()
+    if USE_DRMAA:
+        DRMAA_SESSION.exit()
 
 
 def pre_run_version_checks():
@@ -256,63 +275,52 @@ def pre_run_version_checks():
         raise FatalError('Outdated Ruffus version. Please use >= 2.2')
 
     ### Tool Checks
-    # Make sure bowtie2 exists
-    if not len(which(TOOLS_AND_VERSIONS['bowtie2'][0])):
-        raise FatalError('bowtie2 not found or not executable.')
+    # Make sure isodist exists
+    if not len(which(TOOLS_AND_VERSIONS['isodist'][0])):
+        raise FatalError('isodist not found or not executable.')
 
-    # Check bowtie2 version
-    bowtie_version_process = subprocess.Popen([which(TOOLS_AND_VERSIONS['bowtie2'][0]), '--version'],
+    # Check isodist version (only one 2008 version at time of writing)
+    isodist_version_process = subprocess.Popen([which(TOOLS_AND_VERSIONS['isodist'][0])],
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    bowtie_version_process.wait()
-    _, stderr = bowtie_version_process.communicate()
-    local_bowtie_version = stderr[17:28]
+    isodist_version_process.wait()
+    stdout, _ = isodist_version_process.communicate()
+    local_isodist_version = stdout[23:27] # Snip the isodist version string.
 
-    if not cmp(parse_version(local_bowtie_version), parse_version(TOOLS_AND_VERSIONS['bowtie2'][1])) >= 0:
-        raise FatalError('bowtie2 is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['bowtie2'][1])
+    if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
+        raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
 
-    # bowtie2 database checks
-    if not os.access(HG19_BOWTIE2_INDEX + ".1.bt2", os.R_OK):
-        raise FatalError('Unable to read HG19 bowtie2 index. Have you edited the config options in this script?')
-    if not os.access(MM9_BOWTIE2_INDEX + ".1.bt2", os.R_OK):
-        raise FatalError('Unable to read MM9 bowtie2 index. Have you edited the config options in this script?')
+#    if not os.access(MM9_BOWTIE2_INDEX + ".1.bt2", os.R_OK):
+#        raise FatalError('Unable to read MM9 bowtie2 index. Have you edited the config options in this script?')
 
     return True
 
 
-def _input_file_decorator_helper():
+def parse_DTASelect(DTASelect_file):
     """
-    Because decorators are interpreted early-on, we use this function to pass the input
-    to Ruffus' @files decorator. See: http://www.ruffus.org.uk/decorators/files_ex.html
+    Open and parse a filtered DTA Select file.
     """
-    global CMD_LINE_INPUT_FILES
+    parse_dta_log = logging.getLogger('parse_DTASelect')
+    parse_dta_log.info('Parsing DTA Select file: %s' % (DTASelect_file,))
+    pass
 
-    # TODO: Clean this up.
-    # TODO: Make sure we check for collisions early (e.g. abc.fa and abc.fasta both passed.)
-
-    # Make a directory for the basename of each input file
-    # e.g. "my.sequence.123.fastq" -> "my.sequence.123/"
-    for element in CMD_LINE_INPUT_FILES:
-        try:
-            os.mkdir(os.path.splitext(element)[0])
-        except OSError:
-            # Directory already exists.
-            pass
-
-    return [[element, os.path.splitext(element)[0] + '/' + element + '.qc-filtered.gz'] for element in CMD_LINE_INPUT_FILES]
-
-###########################
-# Actual pipeline code is here.
-# DO NOT MODIFY unless you understand Python decorators.
-#
-# This code depends on Ruffus (MIT License), see http://code.google.com/p/ruffus/
-##########################
-
-@files(_input_file_decorator_helper)
-def quality_control_filter(input_file, output_file):
+def run_isodist(output_path, isotope_distributions):
     """
-    QC filtering on our input files.
+    Run isodist.
     """
-    qc_log = logging.getLogger('quality_control_filter')
+    run_isodist_log = logging.getLogger('run_isodist')
+    run_isodist_log.info('Running isodist.')
+    # Should we spawn jobs via DRMAA?
+    if USE_DRMAA == True:
+        pass
+    else:
+        pass
+
+
+def parse_mzXML(mzXML_file):
+    """
+    Open and parse an mzXML file. TODO: Object orient this or something.
+    """
+    parse_mzXML_log = logging.getLogger('parse_mzXML')
     # TODO: Run FastQC?
     # fasta_formatter -i 50k.fna -w 0 | fastx_trimmer -m 60 -t 60
     # We accept fasta/fastq/sff, so it'd better be one of those formats.
@@ -333,73 +341,6 @@ def quality_control_filter(input_file, output_file):
         # We should never get here, since main() checks input extensions.
         raise FatalError('Unknown input file extension.')
 
-
-# Parallel contaminant filtering [Human, Mouse, & pathogen detection]
-@follows(quality_control_filter)
-@transform(quality_control_filter, suffix('.qc-filtered.gz'), '.human-filtered-only.gz')
-def filter_human_contaminant(input_file, output_file):
-    pass
-
-@follows(quality_control_filter)
-def filter_mouse_contaminant(input_file, output_file):
-    pass
-
-@follows(quality_control_filter)
-def stringent_pathogen_detection(input_file, output_file):
-    pass
-
-
-
-# Linear block -- this short segment is the rate limiting step
-@follows(filter_human_contaminant, filter_mouse_contaminant, stringent_pathogen_detection)
-def duplicate_detection(input_file, output_file):
-    pass
-
-@follows(duplicate_detection)
-def align_to_gut_database(input_file, output_file):
-    pass
-
-
-
-# Ok, back to parallel tasks!
-# Let's get the interesting database reads from the aligned sequences (KEGG, COG, etc.)
-@follows(duplicate_detection)
-def generate_taxonomy(input_file, output_file):
-    pass
-
-
-# Let's also take the un-aligned reads and see what we can do with them.
-@follows(align_to_gut_database)
-def align_leftovers_to_viral_db():
-    pass
-
-@follows(align_to_gut_database)
-def align_leftovers_to_kegg():
-    pass
-
-@follows(align_to_gut_database)
-def align_leftovers_to_cog():
-    pass
-
-
-
-
-# Create a final run summary and declare victory!
-@follows(align_leftovers_to_viral_db, align_leftovers_to_kegg, align_leftovers_to_cog)
-def generate_run_summary():
-    pass
-
-
-# Generate a dependency graph, if asked
-def make_dependency_graph():
-    pipeline_printout_graph("flowchart.svg", "svg", [generate_run_summary], no_key_legend = True)
-
-#make_dependency_graph()
-
-
-### ---------------------------------------------
-### Helper Functions
-### ---------------------------------------------
 
 # Very annoying that Python doesn't have a `which` equivalent. I avoid calling sys(which), since,
 # well, you /could/ run this on Windows. :/
@@ -428,7 +369,7 @@ def deploy_drmaa_job(job_command, job_parameters):
     assert(os.access(job_command, ox.X_OK))
     assert(type(job_parameters) is list)
 
-    # Per Ruffus FAQ, we have a random delay so SGE has a chance get its emotions in check.
+    # We have a random delay so SGE has a chance get its emotions in check.
     # Not sure if this matters for the DRMAA interface, but hey, it's just a few seconds.
     time.sleep(random.random() / 2.0)
     

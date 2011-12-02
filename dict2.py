@@ -23,10 +23,6 @@ def xml_to_dict(el):
 a = xml_to_dict(root)
 
 mzXML = a['{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}mzXML'][0]['{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}msRun']
-print len(mzXML)
-print mzXML[0]
-print mzXML[0].keys()
-
 
 for element in mzXML:
   # Just in case some weird nesting takes place in a later schema or odd MS run type.
@@ -34,7 +30,6 @@ for element in mzXML:
 
   # Pick out just the scans (skip machine info, software version, etc.)
   if '{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}scan' in element:
-    print 'win'
-  else:
-    print 'fail'
+    print element
+
 sleep(1)
