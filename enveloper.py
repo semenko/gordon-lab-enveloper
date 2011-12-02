@@ -19,6 +19,7 @@ __version__ = '1.0'
 
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version, get_distribution
+import csv
 import datetime
 import socket
 import logging
@@ -44,12 +45,6 @@ import sys
 HG19_BOWTIE2_INDEX = "/home/comp/jglab/semenko/databases/bowtie-indexes/hg19/hg19"
 MM9_BOWTIE2_INDEX = "/home/comp/jglab/semenko/databases/bowtie-indexes/mm9/mm9"
 
-# Path to the "BigBelly" database of ~all gut sequences.
-# This contains sequences merged from NCBI-gut NCBI-gut-DRAFT and HMRGD
-BIG_BELLY_BOWTIE2_INDEX = ""
-# Path to directory of annotations (KEGG/COG, etc.) of BigBelly DB.
-BIG_BELLY_ANNOTATIONS_DIR = ""
-
 ## *****
 ## Config Options
 ## *****
@@ -61,11 +56,6 @@ USE_DRMAA = True
 # threads should we spawn?
 # Of note -- Older versions of SGE may have issues with allocating >1 core/job.
 MAX_THREADS = 1
-
-# When should we warn a user about a possibly "contaminated" sample (with HG19/MM9)?
-# These default settings are arbitrary. A contaminant flag will only warn the user -- the pipeline will still run.
-CONTAMINANT_PERCENT_TRIGGER = 5.0
-CONTAMINANT_READ_COUNT_TRIGGER = 15000
 
 # These set paths & minimum version requirements. Checked in TODO
 # Keeping a tool somewhere else? Try: 'bowtie2': ('/my/path/to/bowtie2', '2.0.0-beta3')
@@ -298,10 +288,87 @@ def pre_run_version_checks():
 def parse_DTASelect(DTASelect_file):
     """
     Open and parse a filtered DTA Select file.
+      Input: path to a DTA elect-filtered file
+      Output: A dict of the input file.
     """
     parse_dta_log = logging.getLogger('parse_DTASelect')
     parse_dta_log.info('Parsing DTA Select file: %s' % (DTASelect_file,))
-    pass
+
+    # Store a dictionary of the DTASelect-filter file
+    # This is structured as:
+    # protein_id: {metadata: , peptide:}
+    #      meta:
+    dta_dict = {}
+
+    dta_select_csv = csv.reader(open(DTASelect_file, 'rb'), delimiter = '\t')
+
+    # Temporary parsing variables
+    past_header = False
+    current_keys = []
+    added_peptides = False
+
+    # These files aren't the easiest to parse. We pick lines based on the number of TSV elements.
+    for line in dta_select_csv:
+        print line
+        # Have we gone past the header in the file yet?
+        if past_header:
+            if len(line) == 9:
+                # Length 9 lines are protein groups (they delimit peptide sections)
+                if added_peptides == False:
+                    # This section has multiple protein headers, or we've just started to parse the file.
+                    current_keys.append(line[0])
+                else:
+                    # We must've just entered a new protein section. Reset our "current_keys" list.
+                    added_peptides = False
+                    current_keys = [line[0]]
+
+                if line[0] in dta_dict:
+                    # I don't think this is ever possible. But let's be paranoid.
+                    raise FatalError('Duplicate protein key in DTA Select file!')
+
+                # Make a dict in our dict!
+                dta_dict[line[0]] = {'metadata': {}, 'peptides': []}
+
+                # Set our metadata. In the file, the format is:
+                # 'Sequence Count', 'Spectrum Count', 'Sequence Coverage', 'Length', 'MolWt', 'pI', 'Validation Status', 'Descriptive Name'
+                metadata_dict = dta_dict[line[0]]['metadata']
+                keys = ['seq_count', 'spect_count', 'seq_cov', 'length', 'molwt', 'pI', 'validated', 'name']
+                type = [int, int, str, int, int, float, str, str]
+                for key, value, cast in zip(keys, line[1:], type):
+                    metadata_dict[key] = cast(value)
+ 
+
+            elif len(line) == 13:
+                # Length 13 lines are peptide data, which we add to a protein entry.
+                
+                # Mark that we've started adding data. Otherwise we'd add it to the wrong key!
+                added_peptides = True
+
+                # In the file, the format is:
+                # ['Unique', 'FileName', 'XCorr', 'DeltCN', 'Conf%', 'M+H+', 'CalcM+H+', 'TotalIntensity', 'SpR', 'Prob Score', 'IonProportion', 'Redundancy', 'Sequence']
+                peptide_dict = {}
+
+                for key in current_keys:
+                    dta_dict[key] = peptide_dict
+
+            elif len(line) == 4:
+                # We're at the end of the file. Victor is ours!
+                break
+            else:
+                raise FatalError('Odd structure in DTA Select file!')
+                
+        # We aren't entirely though the header yet.
+        else:
+            # The header is 13 elements and starts with "Unique"
+            if len(line) == 13 and line[0] == "Unique":
+                past_header = True
+                parse_dta_log.info('Found data stream in DTA Select file.')
+
+
+    parse_dta_log.info('Finished parsing.')
+
+    return dta_dict
+
 
 def run_isodist(output_path, isotope_distributions):
     """
