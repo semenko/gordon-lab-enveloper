@@ -236,7 +236,7 @@ def main():
     run_isodist(input_directory.rstrip('/'), dta_select_data)
 
     # Now that we have the isodist predicted spectra, parse the mzXML
-    #mzXML_data = parse_mzXML()
+    mzXML_data = parse_mzXML()
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -374,13 +374,10 @@ def parse_DTASelect(DTASelect_file):
             # The header is 13 elements and starts with "Unique"
             if len(line) == 13 and line[0] == "Unique":
                 past_header = True
-                parse_dta_log.info('Found data stream in DTA Select file.')
+                parse_dta_log.info('Found data stream in DTA Select file')
 
 
-    parse_dta_log.info('Finished parsing.')
-
-    print "here"
-    print dta_dict
+    parse_dta_log.info('Finished parsing')
 
     return dta_dict
 
@@ -390,24 +387,22 @@ def run_isodist(output_path, dta_select_data):
     Run isodist.
     """
     run_isodist_log = logging.getLogger('run_isodist')
-    run_isodist_log.info('Running isodist.')
+    run_isodist_log.info('Running isodist')
 
     # Find the unique peptides from the dta_select_data dict
     # TODO: Make this a little easier to follow when accessing data?
     unique_peptides = set()
     for data in dta_select_data.values():
-        print data
         for peptide_data in data['peptides'].values():
-            print peptide_data['sequence']
-            unique_peptides.add(peptide_data['sequence'])
+            unique_peptides.add(peptide_data['sequence'][2:-2])
 
-    run_isodist_log.info('%s unique peptide sequences found.' % (len(unique_peptides),))
+    run_isodist_log.info('%s unique peptide sequences found' % (len(unique_peptides),))
 
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA == True:
-        pass
+        run_isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
     else:
-        pass
+        run_isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
 
 
 def parse_mzXML(mzXML_file):
