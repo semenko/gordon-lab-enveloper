@@ -40,10 +40,7 @@ import sys
 ## Data Paths
 ## *****
 
-# These paths point to the Bowtie indices for these reference genomes.
-# They are used by filter_human_contaminant and filter_mouse_contaminant
-HG19_BOWTIE2_INDEX = "/home/comp/jglab/semenko/databases/bowtie-indexes/hg19/hg19"
-MM9_BOWTIE2_INDEX = "/home/comp/jglab/semenko/databases/bowtie-indexes/mm9/mm9"
+
 
 ## *****
 ## Config Options
@@ -306,6 +303,7 @@ def parse_DTASelect(DTASelect_file):
     past_header = False
     current_keys = []
     added_peptides = False
+    peptide_list = []
 
     # These files aren't the easiest to parse. We pick lines based on the number of TSV elements.
     for line in dta_select_csv:
@@ -321,6 +319,7 @@ def parse_DTASelect(DTASelect_file):
                     # We must've just entered a new protein section. Reset our "current_keys" list.
                     added_peptides = False
                     current_keys = [line[0]]
+                    peptide_list = []
 
                 if line[0] in dta_dict:
                     # I don't think this is ever possible. But let's be paranoid.
@@ -346,13 +345,12 @@ def parse_DTASelect(DTASelect_file):
 
                 # In the file, the format is:
                 # ['Unique', 'FileName', 'XCorr', 'DeltCN', 'Conf%', 'M+H+', 'CalcM+H+', 'TotalIntensity', 'SpR', 'Prob Score', 'IonProportion', 'Redundancy', 'Sequence']
-                peptide_dict = {}
-
+                # TODO: Make this suck less.
                 for key in current_keys:
-                    dta_dict[key] = peptide_dict
+                    dta_dict[key]['peptides'].append(line)
 
             elif len(line) == 4:
-                # We're at the end of the file. Victor is ours!
+                # We're at the end of the file. Victory is ours!
                 break
             else:
                 raise FatalError('Odd structure in DTA Select file!')
@@ -366,6 +364,8 @@ def parse_DTASelect(DTASelect_file):
 
 
     parse_dta_log.info('Finished parsing.')
+
+    print dta_dict
 
     return dta_dict
 
