@@ -9,4 +9,12 @@ data = etree.parse(infile)
 scans = data.findall("//%sscan" % NAMES)
 
 for scan in scans:
-   t print scan
+   print scan
+#   print scan.tag
+#   print scan.text
+   print scan.attrib
+#   print scan.items()
+#   print scan.keys()
+   for child in scan:
+      print child
+   print "****"
