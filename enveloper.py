@@ -233,7 +233,7 @@ def main():
     dta_select_data = parse_DTASelect(input_directory.rstrip('/') + "/DTASelect-filter.txt")
 
     # Take the unique DTA Select peptide fragments and run isodist
-    #run_isodist(input_directory.rstrip('/'))
+    run_isodist(input_directory.rstrip('/'), dta_select_data)
 
     # Now that we have the isodist predicted spectra, parse the mzXML
     #mzXML_data = parse_mzXML()
@@ -307,7 +307,6 @@ def parse_DTASelect(DTASelect_file):
 
     # These files aren't the easiest to parse. We pick lines based on the number of TSV elements.
     for line in dta_select_csv:
-        print line
         # Have we gone past the header in the file yet?
         if past_header:
             if len(line) == 9:
@@ -318,6 +317,8 @@ def parse_DTASelect(DTASelect_file):
                 else:
                     # We must've just entered a new protein section. Reset our "current_keys" list.
                     added_peptides = False
+                    for key in current_keys:
+                        dta_dict[key]['peptides'] = peptide_dict
                     current_keys = [line[0]]
                     peptide_dict = {}
 
@@ -339,7 +340,7 @@ def parse_DTASelect(DTASelect_file):
 
             elif len(line) == 13:
                 # Length 13 lines are peptide data, which we add to a protein entry.
-                
+
                 # Mark that we've started adding data. Otherwise we'd add it to the wrong key!
                 added_peptides = True
 
@@ -349,16 +350,21 @@ def parse_DTASelect(DTASelect_file):
                 # TODO: Restructure this for performance. This is extremely un-Pythonic.
                 peptide_key = line[1]
                 del line[1] # This is not friendly.
+
+                # Don't think this is possible, but let's be paranoid.
+                if peptide_key in peptide_dict:
+                    raise FatalError('Duplicate FileName key in DTASelect-filter.txt')
+
                 keys = ['unique', 'xcorr', 'delt_cn', 'conf', 'mh', 'calc_mh' ,'tot_intensity', 'spr', 'prob_score', 'ion_proportion', 'redundancy', 'sequence']
                 type = [bool, float, float, float, float, float, float, float, float, float, int, str]
+                peptide_dict[peptide_key] = {}
                 for key, value, cast in zip(keys, line, type):
-                    peptide_dict[key] = cast(value)
-
-                for key in current_keys:
-                    dta_dict[key]['peptides'][peptide_key] = peptide_dict
+                    peptide_dict[peptide_key][key] = cast(value)
 
             elif len(line) == 4:
                 # We're at the end of the file. Victory is ours!
+                for key in current_keys:
+                    dta_dict[key]['peptides'] = peptide_dict
                 break
             else:
                 raise FatalError('Odd structure in DTA Select file!')
@@ -373,17 +379,30 @@ def parse_DTASelect(DTASelect_file):
 
     parse_dta_log.info('Finished parsing.')
 
+    print "here"
     print dta_dict
 
     return dta_dict
 
 
-def run_isodist(output_path, isotope_distributions):
+def run_isodist(output_path, dta_select_data):
     """
     Run isodist.
     """
     run_isodist_log = logging.getLogger('run_isodist')
     run_isodist_log.info('Running isodist.')
+
+    # Find the unique peptides from the dta_select_data dict
+    # TODO: Make this a little easier to follow when accessing data?
+    unique_peptides = set()
+    for data in dta_select_data.values():
+        print data
+        for peptide_data in data['peptides'].values():
+            print peptide_data['sequence']
+            unique_peptides.add(peptide_data['sequence'])
+
+    run_isodist_log.info('%s unique peptide sequences found.' % (len(unique_peptides),))
+
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA == True:
         pass
