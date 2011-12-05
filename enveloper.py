@@ -303,7 +303,7 @@ def parse_DTASelect(DTASelect_file):
     past_header = False
     current_keys = []
     added_peptides = False
-    peptide_list = []
+    peptide_dict = {}
 
     # These files aren't the easiest to parse. We pick lines based on the number of TSV elements.
     for line in dta_select_csv:
@@ -319,14 +319,14 @@ def parse_DTASelect(DTASelect_file):
                     # We must've just entered a new protein section. Reset our "current_keys" list.
                     added_peptides = False
                     current_keys = [line[0]]
-                    peptide_list = []
+                    peptide_dict = {}
 
                 if line[0] in dta_dict:
                     # I don't think this is ever possible. But let's be paranoid.
                     raise FatalError('Duplicate protein key in DTA Select file!')
 
                 # Make a dict in our dict!
-                dta_dict[line[0]] = {'metadata': {}, 'peptides': []}
+                dta_dict[line[0]] = {'metadata': {}, 'peptides': {}}
 
                 # Set our metadata. In the file, the format is:
                 # 'Sequence Count', 'Spectrum Count', 'Sequence Coverage', 'Length', 'MolWt', 'pI', 'Validation Status', 'Descriptive Name'
@@ -344,10 +344,18 @@ def parse_DTASelect(DTASelect_file):
                 added_peptides = True
 
                 # In the file, the format is:
+                # The FileName is our unique dict key.
                 # ['Unique', 'FileName', 'XCorr', 'DeltCN', 'Conf%', 'M+H+', 'CalcM+H+', 'TotalIntensity', 'SpR', 'Prob Score', 'IonProportion', 'Redundancy', 'Sequence']
-                # TODO: Make this suck less.
+                # TODO: Restructure this for performance. This is extremely un-Pythonic.
+                peptide_key = line[1]
+                del line[1] # This is not friendly.
+                keys = ['unique', 'xcorr', 'delt_cn', 'conf', 'mh', 'calc_mh' ,'tot_intensity', 'spr', 'prob_score', 'ion_proportion', 'redundancy', 'sequence']
+                type = [bool, float, float, float, float, float, float, float, float, float, int, str]
+                for key, value, cast in zip(keys, line, type):
+                    peptide_dict[key] = cast(value)
+
                 for key in current_keys:
-                    dta_dict[key]['peptides'].append(line)
+                    dta_dict[key]['peptides'][peptide_key] = peptide_dict
 
             elif len(line) == 4:
                 # We're at the end of the file. Victory is ours!
