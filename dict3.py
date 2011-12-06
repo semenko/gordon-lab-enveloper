@@ -21,9 +21,14 @@ ms1types = [str, float, str, str, float, int, float, int, float, float, int]
 ms2keys = ['polarity', 'basePeakIntensity', 'scanType', 'collisionEnergy', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
 ms2types = [str, float, str, float, str, float, int, float, int, float, float, int]
 
+
 # {'precursorIntensity': '1.9346121875e05', 'activationMethod': 'CID', 'precursorCharge': '1', 'precursorScanNum': '6993'}
 # {'compressedLen': '0', 'pairOrder': 'm/z-int', 'precision': '32', 'byteOrder': 'network'}
+precursorKeys = ['precursorIntensity', 'activationMethod', 'precursorCharge', 'precursorScanNum']
+precursorTypes = [float, str, int, int] # + data
 
+peakKeys = ['compressedLen', 'pairOrder', 'precision', 'byteOrder']
+peakTypes = [int, str, int, str] # + data
 
 for scan in scans:
 #   print scan
@@ -31,36 +36,39 @@ for scan in scans:
 #   print scan.text
    print scan.attrib
    if scan.attrib['msInstrumentID'] == "IC1":
-      # MS1
+      # Store MS1 values in a dict
       ms1_temp_dict = {}
       for key, cast in zip(ms1keys, ms1types):
          ms1_temp_dict[key] = cast(scan.attrib[key])
 
+      peak_temp_dict = {}
+      # MS1 scans have only one peak child ("scan" is an iterable)
+      # TODO: Remove these? Are these values useful?
+      for key, cast in zip(peakKeys, peakTypes):
+         peak_temp_dict[key] = cast(scan[0].attrib[key])
+      peak_temp_dict['rawPeak'] = scan[0].text # The raw b64 data of the peak.
+      ms1_temp_dict['peak'] = peak_temp_dict
+
+      # Add them all to the final MS1 dict.
       ms1[scan.attrib['num']] = ms1_temp_dict
 
-      # 
-      for child in scan:
-         print child.items()
-         print child.keys()
-         for child2 in child:
-            print child2
-
    else:
-      # MS2
+      # Store MS2 values in a dict
       ms2_temp_dict = {}
       for key, cast in zip(ms2keys, ms2types):
          ms2_temp_dict[key] = cast(scan.attrib[key])
 
+      peak_temp_dict = {}
+      # MS2 scans have both "precursor" and "peak" children.
+      print scan[0].attrib
+      for key, cast in zip(precursorKeys, precursorTypes):
+         peak_temp_dict[key] = cast(scan[0].attrib[key])
+      peak_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
+
+      for key, cast in zip(peakKeys, peakTypes):
+         peak_temp_dict[key] = cast(scan[1].attrib[key])
+      peak_temp_dict['rawPeak'] = scan[1].text # The raw b64 of the peak
+
+      ms2_temp_dict['peak'] = peak_temp_dict
+
       ms2[scan.attrib['num']] = ms2_temp_dict
-
-#   print scan.attrib
-#   print scan.attrib['num']
-#   print scan.items()
-#   print scan.keys()
-
-
-   
-   # These are the MS2 scans
-   for child in scan:
-      print child.attrib
-   print "****"
