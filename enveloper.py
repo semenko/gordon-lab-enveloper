@@ -19,6 +19,7 @@ __version__ = '1.0'
 
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version, get_distribution
+from xml.etree import ElementTree
 import csv
 import datetime
 import socket
@@ -237,7 +238,7 @@ def main():
 
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    mzXML_data = parse_mzXML(input_directory.rstrip('/') + [file for file in directory_list if file.endswith('.mzXML')][0])
+    mzXML_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -408,11 +409,76 @@ def run_isodist(output_path, dta_select_data):
 
 def parse_mzXML(mzXML_file):
     """
-    Open and parse an mzXML file. TODO: Object orient this or something.
+    Open and parse an mzXML file. TODO: Get rid of unused parsings?
     """
     parse_mzXML_log = logging.getLogger('parse_mzXML')
 
-    print mzXML_file
+    # We'll return these dicts at the end
+    ms1 = {}
+    ms2 = {}
+
+    # Establish some dict key names & castings
+    ms1keys = ['polarity', 'basePeakIntensity', 'scanType', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
+    ms1types = [str, float, str, str, float, int, float, int, float, float, int]
+
+    ms2keys = ['polarity', 'basePeakIntensity', 'scanType', 'collisionEnergy', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
+    ms2types = [str, float, str, float, str, float, int, float, int, float, float, int]
+
+    precursorKeys = ['precursorIntensity', 'activationMethod', 'precursorScanNum']
+    precursorTypes = [float, str, int]
+
+    peakKeys = ['compressedLen', 'pairOrder', 'precision', 'byteOrder']
+    peakTypes = [int, str, int, str]
+
+    # Open the mzXML
+    namespace = "{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}"
+    parsed_xml = ElementTree.parse(mzXML_file)
+    scans = parsed_xml.findall("//%sscan" % namespace)
+
+    # Loop over each XML scan entry
+    for scan in scans:
+        # Are we in a MS1 or MS2 file?
+        if scan.attrib['msInstrumentID'] == "IC1":
+            # Store MS1 values in a dict
+            ms1_temp_dict = {}
+            for key, cast in zip(ms1keys, ms1types):
+                ms1_temp_dict[key] = cast(scan.attrib[key])
+            peak_temp_dict = {}
+
+            # MS1 scans have only one peak child ("scan" is an iterable)
+            for key, cast in zip(peakKeys, peakTypes):
+                peak_temp_dict[key] = cast(scan[0].attrib[key])
+            peak_temp_dict['rawPeak'] = scan[0].text # The raw b64 data of the peak.
+
+            ms1_temp_dict['peak'] = peak_temp_dict
+
+            # Add them all to the final MS1 dict.
+            ms1[scan.attrib['num']] = ms1_temp_dict
+        else:
+            # Store MS2 values in a dict.
+            if int(scan.attrib['peaksCount']) == 0:
+                parse_mzXML_log.debug('No peaks in scan %s' % (scan.attrib['num'],))
+                continue # Nothing to see here. Next iteration please.
+           
+            ms2_temp_dict = {}
+            for key, cast in zip(ms2keys, ms2types):
+                ms2_temp_dict[key] = cast(scan.attrib[key])
+                
+            peak_temp_dict = {}
+            # MS2 scans have both "precursor" and "peak" children.
+            for key, cast in zip(precursorKeys, precursorTypes):
+                peak_temp_dict[key] = cast(scan[0].attrib[key])
+            peak_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
+
+            for key, cast in zip(peakKeys, peakTypes):
+                peak_temp_dict[key] = cast(scan[1].attrib[key])
+            peak_temp_dict['rawPeak'] = scan[1].text # The raw b64 of the peak
+
+            ms2_temp_dict['peak'] = peak_temp_dict
+            
+            ms2[scan.attrib['num']] = ms2_temp_dict
+
+    return (ms1, ms2)
 
 
 
