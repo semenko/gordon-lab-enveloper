@@ -236,7 +236,8 @@ def main():
     run_isodist(input_directory.rstrip('/'), dta_select_data)
 
     # Now that we have the isodist predicted spectra, parse the mzXML
-    mzXML_data = parse_mzXML()
+    # TODO: Modularize these filenames better.
+    mzXML_data = parse_mzXML(input_directory.rstrip('/') + [file for file in directory_list if file.endswith('.mzXML')][0])
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -410,25 +411,9 @@ def parse_mzXML(mzXML_file):
     Open and parse an mzXML file. TODO: Object orient this or something.
     """
     parse_mzXML_log = logging.getLogger('parse_mzXML')
-    # TODO: Run FastQC?
-    # fasta_formatter -i 50k.fna -w 0 | fastx_trimmer -m 60 -t 60
-    # We accept fasta/fastq/sff, so it'd better be one of those formats.
-    if input_file.endswith(('.fa', '.fna', '.ffn', '.fasta')):
-        # FASTA input
-        qc_log.info('QC filtering FASTA file %s (Output: %s)' % (input_file, output_file))
-        return_code = subprocess.call("fasta_formatter -i 50k.fna -w 0 | fastx_trimmer -m 60 -t 60", shell=True)
-        if return_code != 0:
-            raise FatalError('QC Filtering failed.')
-        
-    elif input_file.endswith(('.fastq', '.fq')):
-        # FastQ
-        qc_log.info('QC filtering FASTQ file %s (Output: %s)' % (input_file, output_file))
-    elif input_file.endswith('.sff'):
-        # SFF
-        qc_log.info('QC filtering SFF file %s (Output: %s)' % (input_file, output_file))
-    else:
-        # We should never get here, since main() checks input extensions.
-        raise FatalError('Unknown input file extension.')
+
+    print mzXML_file
+
 
 
 # Very annoying that Python doesn't have a `which` equivalent. I avoid calling sys(which), since,
