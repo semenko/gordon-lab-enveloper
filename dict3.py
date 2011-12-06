@@ -1,5 +1,5 @@
-from lxml import etree
-
+#from lxml import etree
+from xml.etree import ElementTree as etree
 
 NAMES = "{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}"
 
@@ -75,3 +75,7 @@ for scan in scans:
       ms2_temp_dict['peak'] = peak_temp_dict
 
       ms2[scan.attrib['num']] = ms2_temp_dict
+
+
+print len(ms1)
+print len(ms2)

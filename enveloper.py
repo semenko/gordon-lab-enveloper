@@ -238,7 +238,7 @@ def main():
 
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    mzXML_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+    ms1, ms2 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -409,7 +409,7 @@ def run_isodist(output_path, dta_select_data):
 
 def parse_mzXML(mzXML_file):
     """
-    Open and parse an mzXML file. TODO: Get rid of unused parsings?
+    Open and parse an mzXML file.
     """
     parse_mzXML_log = logging.getLogger('parse_mzXML')
 
@@ -418,6 +418,7 @@ def parse_mzXML(mzXML_file):
     ms2 = {}
 
     # Establish some dict key names & castings
+    # TODO: Get rid of unused keys here.
     ms1keys = ['polarity', 'basePeakIntensity', 'scanType', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
     ms1types = [str, float, str, str, float, int, float, int, float, float, int]
 
@@ -435,6 +436,7 @@ def parse_mzXML(mzXML_file):
     parsed_xml = ElementTree.parse(mzXML_file)
     scans = parsed_xml.findall("//%sscan" % namespace)
 
+    parse_mzXML_log.info('Parsing %s scans in mzXML file' % (len(scans),))
     # Loop over each XML scan entry
     for scan in scans:
         # Are we in a MS1 or MS2 file?
@@ -443,9 +445,9 @@ def parse_mzXML(mzXML_file):
             ms1_temp_dict = {}
             for key, cast in zip(ms1keys, ms1types):
                 ms1_temp_dict[key] = cast(scan.attrib[key])
-            peak_temp_dict = {}
 
-            # MS1 scans have only one peak child ("scan" is an iterable)
+            peak_temp_dict = {}
+            # MS1 scans have only one "peak" child ("scan" is an iterable)
             for key, cast in zip(peakKeys, peakTypes):
                 peak_temp_dict[key] = cast(scan[0].attrib[key])
             peak_temp_dict['rawPeak'] = scan[0].text # The raw b64 data of the peak.
@@ -454,7 +456,8 @@ def parse_mzXML(mzXML_file):
 
             # Add them all to the final MS1 dict.
             ms1[scan.attrib['num']] = ms1_temp_dict
-        else:
+
+        elif scan.attrib['msInstrumentID'] == "IC2":
             # Store MS2 values in a dict.
             if int(scan.attrib['peaksCount']) == 0:
                 parse_mzXML_log.debug('No peaks in scan %s' % (scan.attrib['num'],))
@@ -477,6 +480,11 @@ def parse_mzXML(mzXML_file):
             ms2_temp_dict['peak'] = peak_temp_dict
             
             ms2[scan.attrib['num']] = ms2_temp_dict
+
+        else:
+            raise FatalError('Unknown msInstrumentID in mzXML.')
+
+    parse_mzXML_log.info('Found %s ms1 scans, %s ms2 scans' % (len(ms1), len(ms2)))
 
     return (ms1, ms2)
 
