@@ -24,8 +24,8 @@ ms2types = [str, float, str, float, str, float, int, float, int, float, float, i
 
 # {'precursorIntensity': '1.9346121875e05', 'activationMethod': 'CID', 'precursorCharge': '1', 'precursorScanNum': '6993'}
 # {'compressedLen': '0', 'pairOrder': 'm/z-int', 'precision': '32', 'byteOrder': 'network'}
-precursorKeys = ['precursorIntensity', 'activationMethod', 'precursorCharge', 'precursorScanNum']
-precursorTypes = [float, str, int, int] # + data
+precursorKeys = ['precursorIntensity', 'activationMethod', 'precursorScanNum']
+precursorTypes = [float, str, int] # + data
 
 peakKeys = ['compressedLen', 'pairOrder', 'precision', 'byteOrder']
 peakTypes = [int, str, int, str] # + data
@@ -34,7 +34,7 @@ for scan in scans:
 #   print scan
 #   print scan.tag
 #   print scan.text
-   print scan.attrib
+#   print scan.attrib
    if scan.attrib['msInstrumentID'] == "IC1":
       # Store MS1 values in a dict
       ms1_temp_dict = {}
@@ -54,13 +54,16 @@ for scan in scans:
 
    else:
       # Store MS2 values in a dict
+      if int(scan.attrib['peaksCount']) == 0:
+         print "No peaks!"
+         continue # Nothing to see here. Next iteration please.
       ms2_temp_dict = {}
       for key, cast in zip(ms2keys, ms2types):
          ms2_temp_dict[key] = cast(scan.attrib[key])
 
       peak_temp_dict = {}
       # MS2 scans have both "precursor" and "peak" children.
-      print scan[0].attrib
+#      print scan[0].attrib
       for key, cast in zip(precursorKeys, precursorTypes):
          peak_temp_dict[key] = cast(scan[0].attrib[key])
       peak_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
