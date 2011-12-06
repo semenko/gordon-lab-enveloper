@@ -412,6 +412,7 @@ def parse_mzXML(mzXML_file):
     Open and parse an mzXML file.
     """
     parse_mzXML_log = logging.getLogger('parse_mzXML')
+    parse_mzXML_log.info('Parsing mzXML file %s' % (mzXML_file,))
 
     # We'll return these dicts at the end
     ms1 = {}
@@ -436,7 +437,7 @@ def parse_mzXML(mzXML_file):
     parsed_xml = ElementTree.parse(mzXML_file)
     scans = parsed_xml.findall("//%sscan" % namespace)
 
-    parse_mzXML_log.info('Parsing %s scans in mzXML file' % (len(scans),))
+    parse_mzXML_log.info('Found %s scans in mzXML file' % (len(scans),))
     # Loop over each XML scan entry
     for scan in scans:
         # Are we in a MS1 or MS2 file?
@@ -484,7 +485,7 @@ def parse_mzXML(mzXML_file):
         else:
             raise FatalError('Unknown msInstrumentID in mzXML.')
 
-    parse_mzXML_log.info('Found %s ms1 scans, %s ms2 scans' % (len(ms1), len(ms2)))
+    parse_mzXML_log.info('Extracted %s ms1 scans, %s ms2 scans' % (len(ms1), len(ms2)))
 
     return (ms1, ms2)
 
