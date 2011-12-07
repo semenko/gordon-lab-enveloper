@@ -12,7 +12,7 @@
 Some envelope stuff with mass spec stuff.
 """
 
-__author__ = 'Nick Semenkovich <semenko@alum.mit.edu>'
+__author__ = 'Nick Semenkovich <semenko@alum.mit.edu> and Gabriel Simon <gsimon@pathology.wustl.edu>'
 __copyright__ = 'Gordon Lab at Washington University in St. Louis / gordonlab.wustl.edu'
 __license__ = 'MIT'
 __version__ = '1.0'
@@ -20,6 +20,7 @@ __version__ = '1.0'
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version, get_distribution
 from xml.etree import ElementTree
+import base64
 import csv
 import datetime
 import socket
@@ -29,6 +30,7 @@ import subprocess
 import random
 import time
 import signal
+import struct
 import sys
 
 ### ---------------------------------------------
@@ -48,7 +50,7 @@ import sys
 ## *****
 
 # Should we submit jobs to DRMAA? If false, we just run locally. This depends on DRMAA.
-USE_DRMAA = True
+USE_DRMAA = False
 
 # If a program has thread options (e.g. bowtie2 with --threads <int>), how many
 # threads should we spawn?
@@ -240,6 +242,15 @@ def main():
     # TODO: Modularize these filenames better.
     ms1, ms2 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
 
+
+    # Parsing b64 via:
+    # decoded = base64.b64decode(mystr)
+    # struct.unpack('!f', mystr[:4]) # IEEE-754
+
+#    print ms1['1']['peak']['rawPeak']
+#    b64raw = ms2['2']['peak']['rawPeak']
+#    print base64.standard_b64decode(b64raw)
+
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
     #turkey_cooker(mzXML_data, input_directory.rstrip('/'))
@@ -420,17 +431,16 @@ def parse_mzXML(mzXML_file):
 
     # Establish some dict key names & castings
     # TODO: Get rid of unused keys here.
-    ms1keys = ['polarity', 'basePeakIntensity', 'scanType', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
-    ms1types = [str, float, str, str, float, int, float, int, float, float, int]
+    # Got rid of some "fixed" keys that never change, per:
+    # http://sashimi.sourceforge.net/schema_revision/mzXML_3.2/mzXML_3.2.xsd
+    ms1keys = ['polarity', 'basePeakIntensity', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
+    ms1types = [str, float, str, float, int, float, int, float, float, int]
 
-    ms2keys = ['polarity', 'basePeakIntensity', 'scanType', 'collisionEnergy', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
-    ms2types = [str, float, str, float, str, float, int, float, int, float, float, int]
+    ms2keys = ['polarity', 'basePeakIntensity', 'collisionEnergy', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
+    ms2types = [str, float, float, str, float, int, float, int, float, float, int]
 
-    precursorKeys = ['precursorIntensity', 'activationMethod', 'precursorScanNum']
-    precursorTypes = [float, str, int]
-
-    peakKeys = ['compressedLen', 'pairOrder', 'precision', 'byteOrder']
-    peakTypes = [int, str, int, str]
+    precursorKeys = ['precursorIntensity', 'precursorScanNum']
+    precursorTypes = [float, int]
 
     # Open the mzXML
     namespace = "{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}"
@@ -447,13 +457,19 @@ def parse_mzXML(mzXML_file):
             for key, cast in zip(ms1keys, ms1types):
                 ms1_temp_dict[key] = cast(scan.attrib[key])
 
-            peak_temp_dict = {}
             # MS1 scans have only one "peak" child ("scan" is an iterable)
-            for key, cast in zip(peakKeys, peakTypes):
-                peak_temp_dict[key] = cast(scan[0].attrib[key])
-            peak_temp_dict['rawPeak'] = scan[0].text # The raw b64 data of the peak.
+            # We check that these are uncompressed & 32-bit IEEE-754 network-order b64
+            if int(scan[0].attrib['compressedLen']) != 0:
+                raise FatalError('Sorry, compressed mzXML parsing is not implemented')
+            if int(scan[0].attrib['precision']) != 32:
+                # You can fix this with Python's struct module and '!d'
+                raise FatalError('Sorry, 64-precision IEEE-754 parsing is not implemented.')
+            if scan[0].attrib['byteOrder'] != "network":
+                raise FatalError('Sorry, non-big-endian storage is not implemented.')
+            if scan[0].attrib['pairOrder'] != "m/z-int":
+                raise FatalError('Sorry, non m/z-int order is not implemented.')
 
-            ms1_temp_dict['peak'] = peak_temp_dict
+            ms1_temp_dict['peak'] = scan[0].text # The raw b64 data of the peak.
 
             # Add them all to the final MS1 dict.
             ms1[scan.attrib['num']] = ms1_temp_dict
@@ -468,17 +484,14 @@ def parse_mzXML(mzXML_file):
             for key, cast in zip(ms2keys, ms2types):
                 ms2_temp_dict[key] = cast(scan.attrib[key])
                 
-            peak_temp_dict = {}
             # MS2 scans have both "precursor" and "peak" children.
             for key, cast in zip(precursorKeys, precursorTypes):
-                peak_temp_dict[key] = cast(scan[0].attrib[key])
-            peak_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
+                ms2_temp_dict[key] = cast(scan[0].attrib[key])
 
-            for key, cast in zip(peakKeys, peakTypes):
-                peak_temp_dict[key] = cast(scan[1].attrib[key])
-            peak_temp_dict['rawPeak'] = scan[1].text # The raw b64 of the peak
-
-            ms2_temp_dict['peak'] = peak_temp_dict
+            # TODO: Bring in sanity checking from above here too.
+            ms2_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
+            
+            ms2_temp_dict['peak'] = scan[1].text # The raw b64 of the peak
             
             ms2[scan.attrib['num']] = ms2_temp_dict
 
