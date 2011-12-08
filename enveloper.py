@@ -242,15 +242,6 @@ def main():
     # TODO: Modularize these filenames better.
     ms1, ms2 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
 
-
-    # Parsing b64 via:
-    # decoded = base64.b64decode(mystr)
-    # struct.unpack('!f', mystr[:4]) # IEEE-754
-
-#    print ms1['1']['peak']['rawPeak']
-#    b64raw = ms2['2']['peak']['rawPeak']
-#    print base64.standard_b64decode(b64raw)
-
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
     #turkey_cooker(mzXML_data, input_directory.rstrip('/'))
@@ -271,8 +262,8 @@ def pre_run_version_checks():
     if sys.hexversion < 0x02060500:
         raise FatalError('Outdated Python version. Please use >=2.6.5')
 
-    if not cmp(parse_version(get_distribution("ruffus").version), parse_version('2.2')) >= 0:
-        raise FatalError('Outdated Ruffus version. Please use >= 2.2')
+#    if not cmp(parse_version(get_distribution("ruffus").version), parse_version('2.2')) >= 0:
+#        raise FatalError('Outdated Ruffus version. Please use >= 2.2')
 
     ### Tool Checks
     # Make sure isodist exists
@@ -452,7 +443,8 @@ def parse_mzXML(mzXML_file):
     count = 0
     for scan in scans:
         count += 1
-        parse_mzXML_log.info('On scan %s' % (count,))
+        if count % 1000 == 0:
+            parse_mzXML_log.info('On scan %s' % (count,))
         # Are we in a MS1 or MS2 file?
         if scan.attrib['msInstrumentID'] == "IC1":
             # Store MS1 values in a dict
@@ -474,8 +466,8 @@ def parse_mzXML(mzXML_file):
 
             decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            ms1_temp_dict['peak'] = [struct.unpack('!ff', decoded_b64[x:x+8])
-                                     for x in range(0, (len(decoded_b64)/4-1)*4, 8)]
+            floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
+            ms1_temp_dict['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
             # Add them all to the final MS1 dict.
             ms1[scan.attrib['num']] = ms1_temp_dict
@@ -499,8 +491,9 @@ def parse_mzXML(mzXML_file):
             ms2_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
             
             decoded_b64 = base64.b64decode(scan[1].text) # Decode the packed b64 raw peaks
-            ms2_temp_dict['peak'] = [struct.unpack('!ff', decoded_b64[x:x+8])
-                                     for x in range(0, (len(decoded_b64)/4-1)*4, 8)]
+            # Note: This codepath is extremely slow, especially the zip.
+            floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64)
+            ms2_temp_dict['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
             
             ms2[scan.attrib['num']] = ms2_temp_dict
 
