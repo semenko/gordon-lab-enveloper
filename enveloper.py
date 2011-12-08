@@ -240,7 +240,7 @@ def main():
 
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    ms1, ms2 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+    ms1 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -416,22 +416,15 @@ def parse_mzXML(mzXML_file):
     parse_mzXML_log = logging.getLogger('parse_mzXML')
     parse_mzXML_log.info('Parsing mzXML file %s' % (mzXML_file,))
 
-    # We'll return these dicts at the end
+    # NOTE: We discard ms2 data, since we don't need it.
+    # We'll return this dicts at the end
     ms1 = {}
-    ms2 = {}
 
     # Establish some dict key names & castings
-    # TODO: Get rid of unused keys here.
     # Got rid of some "fixed" keys that never change, per:
     # http://sashimi.sourceforge.net/schema_revision/mzXML_3.2/mzXML_3.2.xsd
     ms1keys = ['polarity', 'basePeakIntensity', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
     ms1types = [str, float, str, float, int, float, int, float, float, int]
-
-    ms2keys = ['polarity', 'basePeakIntensity', 'collisionEnergy', 'retentionTime', 'basePeakMz', 'peaksCount', 'lowMz', 'scanEvent', 'totIonCurrent', 'highMz', 'centroided']
-    ms2types = [str, float, float, str, float, int, float, int, float, float, int]
-
-    precursorKeys = ['precursorIntensity', 'precursorScanNum']
-    precursorTypes = [float, int]
 
     # Open the mzXML
     namespace = "{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}"
@@ -440,24 +433,23 @@ def parse_mzXML(mzXML_file):
 
     parse_mzXML_log.info('Found %s scans in mzXML file' % (len(scans),))
     # Loop over each XML scan entry
-    count = 0
     for scan in scans:
-        count += 1
-        if count % 1000 == 0:
-            parse_mzXML_log.info('On scan %s' % (count,))
+        scan_num = int(scan.attrib['num'])
+        if scan_num % 1000 == 0:
+            parse_mzXML_log.info('On scan %s' % (scan_num,))
         # Are we in a MS1 or MS2 file?
         if scan.attrib['msInstrumentID'] == "IC1":
-            # Store MS1 values in a dict
-            ms1_temp_dict = {}
+            # Store our MS1 values in a dict for this scan
+            ms1[scan_num] = {}
+            # Cast & store our ms1 values
             for key, cast in zip(ms1keys, ms1types):
-                ms1_temp_dict[key] = cast(scan.attrib[key])
+                ms1[scan_num][key] = cast(scan.attrib[key])
 
             # MS1 scans have only one "peak" child ("scan" is an iterable)
             # We check that these are uncompressed & 32-bit IEEE-754 network-order b64
             if int(scan[0].attrib['compressedLen']) != 0:
                 raise FatalError('Sorry, compressed mzXML parsing is not implemented')
             if int(scan[0].attrib['precision']) != 32:
-                # You can fix this with Python's struct module and '!d'
                 raise FatalError('Sorry, 64-precision IEEE-754 parsing is not implemented.')
             if scan[0].attrib['byteOrder'] != "network":
                 raise FatalError('Sorry, non-big-endian storage is not implemented.')
@@ -467,42 +459,17 @@ def parse_mzXML(mzXML_file):
             decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
             floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
-            ms1_temp_dict['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
-
-            # Add them all to the final MS1 dict.
-            ms1[scan.attrib['num']] = ms1_temp_dict
+            ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
-            # Store MS2 values in a dict.
-            if int(scan.attrib['peaksCount']) == 0:
-                parse_mzXML_log.debug('No peaks in scan %s' % (scan.attrib['num'],))
-                continue # Nothing to see here. Next iteration please.
-           
-            ms2_temp_dict = {}
-            for key, cast in zip(ms2keys, ms2types):
-                ms2_temp_dict[key] = cast(scan.attrib[key])
-                
-            # MS2 scans have both "precursor" and "peak" children.
-            for key, cast in zip(precursorKeys, precursorTypes):
-                ms2_temp_dict[key] = cast(scan[0].attrib[key])
-
-            # TODO: Bring in sanity checking from above here too.
-            # TODO: Modularize the b64?
-            ms2_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
-            
-            decoded_b64 = base64.b64decode(scan[1].text) # Decode the packed b64 raw peaks
-            # Note: This codepath is extremely slow, especially the zip.
-            floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64)
-            ms2_temp_dict['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
-            
-            ms2[scan.attrib['num']] = ms2_temp_dict
-
+            # Skip MS2 data
+            pass
         else:
             raise FatalError('Unknown msInstrumentID in mzXML.')
 
-    parse_mzXML_log.info('Extracted %s ms1 scans, %s ms2 scans' % (len(ms1), len(ms2)))
+    parse_mzXML_log.info('Extracted %s ms1 scans.' % (len(ms1),))
 
-    return (ms1, ms2)
+    return ms1
 
 
 
