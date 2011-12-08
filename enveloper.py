@@ -150,7 +150,11 @@ def main():
     parser = OptionParser(usage="usage: %prog [options] input_directory\n\nInput directory must contain:\n\tDTASelect-filter.txt\n\t*.sqt\n\t*.mzXML",
                           version="%prog 1.0")
 
-    parser.add_option("-v", "--verbose", help="Verbose", default=logging.INFO, action="store_const", const=logging.DEBUG, dest="loglevel")
+    parser.add_option("-v", "--verbose", help="Be verbose.",
+                      default=logging.INFO, action="store_const", const=logging.DEBUG, dest="loglevel")
+
+    parser.add_option("--force-gc", help="Force garbage collection. (Slow!)",
+                      default=False, action="store_true", dest="force_gc")
 
     # This ignores hyperthreading pseudo-cores, which is fine since we presumably hose the ALU.
     # TODO: Change default when DRMAA is enabled.
@@ -166,25 +170,15 @@ def main():
                       default=-1, action="store", type="int", dest="stopNum")
     parser.add_option_group(group)
 
-    
-    (options, args) = parser.parse_args()
 
-    # Sanity check range inputs
-    range_given = False
-    if options.startNum >= 0 or options.stopNum >= 0:
-        if not (options.startNum >= 0 <= options.stopNum):
-            parser.error("If you specifiy a start/stop, you must specify both ends of the range!")
-        if options.startNum >= options.stopNum:
-            parser.error("Invalid scan range.")
-        if options.startNum == 1:
-            print "WARNING: This is a Python range, where lists are zero indexed! Are you sure you mean '1'?"
-        range_given = True
+
+    # Parse the input and check.
+    (options, args) = parser.parse_args()
 
     if not len(args) == 1:
         parser.error("You must specify exactly one input directory.\n\nTry --help for help.")
 
     input_directory = args[0]
-
     if not os.access(input_directory, os.R_OK):
         parser.error("Cannot read input directory.")
 
@@ -237,6 +231,15 @@ def main():
 
     # Take the unique DTA Select peptide fragments and run isodist
     run_isodist(input_directory.rstrip('/'), dta_select_data)
+
+
+    # Garbage collection KILLS 
+    if options.force_gc:
+        log_main.warning('Running with garbage collection: This is EXTREMELY slow!')
+    else:
+        log_main.info('Disabling garbage collection due to performance issues: Use --force-gc to override.')
+        gc.disable()
+        
 
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
@@ -415,8 +418,6 @@ def parse_mzXML(mzXML_file):
     """
     parse_mzXML_log = logging.getLogger('parse_mzXML')
     parse_mzXML_log.info('Parsing mzXML file %s' % (mzXML_file,))
-
-    gc.disable() # Yeah, sorry :(
     
     # NOTE: We discard ms2 data, since we don't need it.
     # We'll return this dicts at the end
