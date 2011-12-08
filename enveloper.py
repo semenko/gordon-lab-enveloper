@@ -469,7 +469,11 @@ def parse_mzXML(mzXML_file):
             if scan[0].attrib['pairOrder'] != "m/z-int":
                 raise FatalError('Sorry, non m/z-int order is not implemented.')
 
-            ms1_temp_dict['peak'] = scan[0].text # The raw b64 data of the peak.
+            decode_db64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
+            # These are packed as big-endian IEEE 754 binary32
+            ms1_temp_dict['peak'] = [(struct.unpack('!f', decoded[x*4:x*4+4])[0],
+                                      struct.unpack('!f', decoded[(x*4)+4:(x*4)+8])[0])
+                                     for x in range(0, len(decoded)/4-1, 2)]
 
             # Add them all to the final MS1 dict.
             ms1[scan.attrib['num']] = ms1_temp_dict
