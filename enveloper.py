@@ -469,11 +469,11 @@ def parse_mzXML(mzXML_file):
             if scan[0].attrib['pairOrder'] != "m/z-int":
                 raise FatalError('Sorry, non m/z-int order is not implemented.')
 
-            decode_db64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
+            decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            ms1_temp_dict['peak'] = [(struct.unpack('!f', decoded[x*4:x*4+4])[0],
-                                      struct.unpack('!f', decoded[(x*4)+4:(x*4)+8])[0])
-                                     for x in range(0, len(decoded)/4-1, 2)]
+            ms1_temp_dict['peak'] = [(struct.unpack('!f', decoded_b64[x:x+4])[0],
+                                      struct.unpack('!f', decoded_b64[x+4:x+8])[0])
+                                     for x in range(0, (len(decoded_b64)/4-1)*4, 8)]
 
             # Add them all to the final MS1 dict.
             ms1[scan.attrib['num']] = ms1_temp_dict
@@ -493,9 +493,13 @@ def parse_mzXML(mzXML_file):
                 ms2_temp_dict[key] = cast(scan[0].attrib[key])
 
             # TODO: Bring in sanity checking from above here too.
+            # TODO: Modularize the b64?
             ms2_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
             
-            ms2_temp_dict['peak'] = scan[1].text # The raw b64 of the peak
+            decoded_b64 = base64.b64decode(scan[1].text) # Decode the packed b64 raw peaks
+            ms2_temp_dict['peak'] = [(struct.unpack('!f', decoded_b64[x:x+4])[0],
+                                      struct.unpack('!f', decoded_b64[x+4:x+8])[0])
+                                     for x in range(0, (len(decoded_b64)/4-1)*4, 8)]
             
             ms2[scan.attrib['num']] = ms2_temp_dict
 

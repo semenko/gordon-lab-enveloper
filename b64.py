@@ -20,8 +20,11 @@ decoded2 = base64.standard_b64decode(mystr)
 #print len(decoded)
 print len(decoded)
 
-#for i in range(len(decoded)/4):
+#for i in range(0, len(decoded)/4, 2):
+#    print i
 #    print decoded[i*4:i*4+4]
 #    print struct.unpack('!f', decoded[i*4:i*4+4])
 
-print [(struct.unpack('!f', decoded[x*4:x*4+4])[0], struct.unpack('!f', decoded[(x*4)+4:(x*4)+8])[0]) for x in range(0, len(decoded)/4-1, 2)]
+print len(range(0, (len(decoded)/4-1)*4, 8))
+
+print [(struct.unpack('!f', decoded[x:x+4])[0], struct.unpack('!f', decoded[x+4:x+8])[0]) for x in range(0, (len(decoded)/4-1)*4, 8)]
