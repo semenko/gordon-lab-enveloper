@@ -27,4 +27,4 @@ print len(decoded)
 
 print len(range(0, (len(decoded)/4-1)*4, 8))
 
-print [(struct.unpack('!f', decoded[x:x+4])[0], struct.unpack('!f', decoded[x+4:x+8])[0]) for x in range(0, (len(decoded)/4-1)*4, 8)]
+print [struct.unpack('!ff', decoded[x:x+8]) for x in range(0, (len(decoded)/4-1)*4, 8)]

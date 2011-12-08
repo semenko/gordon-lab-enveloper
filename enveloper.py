@@ -449,7 +449,10 @@ def parse_mzXML(mzXML_file):
 
     parse_mzXML_log.info('Found %s scans in mzXML file' % (len(scans),))
     # Loop over each XML scan entry
+    count = 0
     for scan in scans:
+        count += 1
+        parse_mzXML_log.info('On scan %s' % (count,))
         # Are we in a MS1 or MS2 file?
         if scan.attrib['msInstrumentID'] == "IC1":
             # Store MS1 values in a dict
@@ -471,8 +474,7 @@ def parse_mzXML(mzXML_file):
 
             decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            ms1_temp_dict['peak'] = [(struct.unpack('!f', decoded_b64[x:x+4])[0],
-                                      struct.unpack('!f', decoded_b64[x+4:x+8])[0])
+            ms1_temp_dict['peak'] = [struct.unpack('!ff', decoded_b64[x:x+8])
                                      for x in range(0, (len(decoded_b64)/4-1)*4, 8)]
 
             # Add them all to the final MS1 dict.
@@ -497,8 +499,7 @@ def parse_mzXML(mzXML_file):
             ms2_temp_dict['precursorMz'] = scan[0].text # The raw precursor Mz
             
             decoded_b64 = base64.b64decode(scan[1].text) # Decode the packed b64 raw peaks
-            ms2_temp_dict['peak'] = [(struct.unpack('!f', decoded_b64[x:x+4])[0],
-                                      struct.unpack('!f', decoded_b64[x+4:x+8])[0])
+            ms2_temp_dict['peak'] = [struct.unpack('!ff', decoded_b64[x:x+8])
                                      for x in range(0, (len(decoded_b64)/4-1)*4, 8)]
             
             ms2[scan.attrib['num']] = ms2_temp_dict
