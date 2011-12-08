@@ -23,6 +23,7 @@ from xml.etree import ElementTree
 import base64
 import csv
 import datetime
+import gc
 import socket
 import logging
 import os
@@ -149,9 +150,7 @@ def main():
     parser = OptionParser(usage="usage: %prog [options] input_directory\n\nInput directory must contain:\n\tDTASelect-filter.txt\n\t*.sqt\n\t*.mzXML",
                           version="%prog 1.0")
 
-    # OPT:
-    # file hint (sff/fa/fq)
-    # split on MIDs.
+    parser.add_option("-v", "--verbose", help="Verbose", default=logging.INFO, action="store_const", const=logging.DEBUG, dest="loglevel")
 
     # This ignores hyperthreading pseudo-cores, which is fine since we presumably hose the ALU.
     # TODO: Change default when DRMAA is enabled.
@@ -209,7 +208,8 @@ def main():
 
     # Define a Handler which writes INFO messages or higher to the sys.stderr
     console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
+    # level DEBUG if the user added --verbose or -v
+    console.setLevel(options.loglevel)
     # Point to our colorized formatter.
     console.setFormatter(ColorFormatter())
     logging.getLogger('').addHandler(console)
@@ -416,6 +416,8 @@ def parse_mzXML(mzXML_file):
     parse_mzXML_log = logging.getLogger('parse_mzXML')
     parse_mzXML_log.info('Parsing mzXML file %s' % (mzXML_file,))
 
+    gc.disable() # Yeah, sorry :(
+    
     # NOTE: We discard ms2 data, since we don't need it.
     # We'll return this dicts at the end
     ms1 = {}
@@ -435,8 +437,8 @@ def parse_mzXML(mzXML_file):
     # Loop over each XML scan entry
     for scan in scans:
         scan_num = int(scan.attrib['num'])
-        if scan_num % 1000 == 0:
-            parse_mzXML_log.info('On scan %s' % (scan_num,))
+        if scan_num % 2000 == 0:
+            parse_mzXML_log.debug('On scan %s' % (scan_num,))
         # Are we in a MS1 or MS2 file?
         if scan.attrib['msInstrumentID'] == "IC1":
             # Store our MS1 values in a dict for this scan
