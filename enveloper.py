@@ -222,7 +222,7 @@ def main():
     signal.signal(signal.SIGINT, handle_SIGINT)
 
     # Check the version numbers, etc.
-    pre_run_version_checks()
+    # pre_run_version_checks()
 
     
     ###### More application-specific functions
@@ -233,23 +233,26 @@ def main():
     run_isodist(input_directory.rstrip('/'), dta_select_data)
 
 
-    # Garbage collection KILLS 
+    # Garbage collection KILLS performance.
+    # This is probably 2/2 http://bugs.python.org/issue4074
+    # Fixed in 2.7 branch
     if options.force_gc:
         log_main.warning('Running with garbage collection: This is EXTREMELY slow!')
     else:
         log_main.info('Disabling garbage collection due to performance issues: Use --force-gc to override.')
         gc.disable()
         
-
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    ms1 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+    ms1_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+
+    # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
+    # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
+    extract_MS1_peaks_of_peptides(dta_select_data, ms1_data)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
     #turkey_cooker(mzXML_data, input_directory.rstrip('/'))
-
-    #pipeline_run([generate_run_summary], verbose = 5)
 
     # Cleanup.
     if USE_DRMAA:
@@ -264,9 +267,6 @@ def pre_run_version_checks():
 
     if sys.hexversion < 0x02060500:
         raise FatalError('Outdated Python version. Please use >=2.6.5')
-
-#    if not cmp(parse_version(get_distribution("ruffus").version), parse_version('2.2')) >= 0:
-#        raise FatalError('Outdated Ruffus version. Please use >= 2.2')
 
     ### Tool Checks
     # Make sure isodist exists
@@ -318,7 +318,7 @@ def parse_DTASelect(DTASelect_file):
         if past_header:
             if len(line) == 9:
                 # Length 9 lines are protein groups (they delimit peptide sections)
-                if added_peptides == False:
+                if not added_peptides:
                     # This section has multiple protein headers, or we've just started to parse the file.
                     current_keys.append(line[0])
                 else:
@@ -388,6 +388,16 @@ def parse_DTASelect(DTASelect_file):
 
     return dta_dict
 
+def extract_MS1_peaks_of_peptides(dta_select_data, ms1):
+    """
+    Given the dta_select data, and the ms1 from the mzXML,
+    try to extract representative peaks for each peptide.
+    """
+    
+    
+
+    return peptide_dict
+
 
 def run_isodist(output_path, dta_select_data):
     """
@@ -396,6 +406,9 @@ def run_isodist(output_path, dta_select_data):
     run_isodist_log = logging.getLogger('run_isodist')
     run_isodist_log.info('Running isodist')
 
+    print dta_select_data
+    print len(dta_select_data)
+    print dta_select_data.keys()
     # Find the unique peptides from the dta_select_data dict
     # TODO: Make this a little easier to follow when accessing data?
     unique_peptides = set()
@@ -406,7 +419,7 @@ def run_isodist(output_path, dta_select_data):
     run_isodist_log.info('%s unique peptide sequences found' % (len(unique_peptides),))
 
     # Should we spawn jobs via DRMAA?
-    if USE_DRMAA == True:
+    if USE_DRMAA:
         run_isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
     else:
         run_isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
@@ -438,7 +451,7 @@ def parse_mzXML(mzXML_file):
     # Loop over each XML scan entry
     for scan in scans:
         scan_num = int(scan.attrib['num'])
-        if scan_num % 2000 == 0:
+        if not scan_num % 2000:
             parse_mzXML_log.debug('On scan %s' % (scan_num,))
         # Are we in a MS1 or MS2 file?
         if scan.attrib['msInstrumentID'] == "IC1":
@@ -450,7 +463,7 @@ def parse_mzXML(mzXML_file):
 
             # MS1 scans have only one "peak" child ("scan" is an iterable)
             # We check that these are uncompressed & 32-bit IEEE-754 network-order b64
-            if int(scan[0].attrib['compressedLen']) != 0:
+            if int(scan[0].attrib['compressedLen']):
                 raise FatalError('Sorry, compressed mzXML parsing is not implemented')
             if int(scan[0].attrib['precision']) != 32:
                 raise FatalError('Sorry, 64-precision IEEE-754 parsing is not implemented.')
@@ -463,6 +476,7 @@ def parse_mzXML(mzXML_file):
             # These are packed as big-endian IEEE 754 binary32
             floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
+#            print float(len([x for x in ms1[scan_num]['peak'] if x[1] == 0.0]))/len(ms1[scan_num]['peak'])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
             # Skip MS2 data
