@@ -18,7 +18,7 @@ __license__ = 'MIT'
 __version__ = '1.0'
 
 from optparse import OptionParser, OptionGroup
-from pkg_resources import parse_version, get_distribution
+from pkg_resources import parse_version
 from xml.etree import ElementTree
 import base64
 import csv
@@ -70,6 +70,9 @@ TOOLS_AND_VERSIONS = {
 ### ---------------------------------------------
 
 def handle_SIGINT(signal, frame):
+    """
+    Caught a SIGINT / user pressed Ctrl-C
+    """
     raise FatalError('User abort: Caught SIGINT')
 
 class FatalError(Exception):
@@ -258,6 +261,8 @@ def main():
     if USE_DRMAA:
         DRMAA_SESSION.exit()
 
+    log_main.info("Execution took: %s secs." % (time.time()-starttime))
+
 
 def pre_run_version_checks():
     """
@@ -286,6 +291,7 @@ def pre_run_version_checks():
 #    if not os.access(MM9_BOWTIE2_INDEX + ".1.bt2", os.R_OK):
 #        raise FatalError('Unable to read MM9 bowtie2 index. Have you edited the config options in this script?')
 
+    log_prerun('Version checks passed.')
     return True
 
 
@@ -514,7 +520,7 @@ def deploy_drmaa_job(job_command, job_parameters):
 
     drmaa_logger = logging.getLogger('deploy_drmaa_job')
 
-    assert(os.access(job_command, ox.X_OK))
+    assert(os.access(job_command, os.X_OK))
     assert(type(job_parameters) is list)
 
     # We have a random delay so SGE has a chance get its emotions in check.
