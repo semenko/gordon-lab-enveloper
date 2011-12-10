@@ -50,6 +50,9 @@ import sys
 ## Config Options
 ## *****
 
+# In Daltons, for guessing MS1 peak range from MS2 m/z
+PEAK_SPREAD = 10
+
 # Should we submit jobs to DRMAA? If false, we just run locally. This depends on DRMAA.
 USE_DRMAA = False
 
@@ -247,11 +250,11 @@ def main():
         
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    ms1_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
-
+    #ms1_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+    ms1_data = {}
     # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
-    extract_MS1_peaks_of_peptides(dta_select_data, ms1_data)
+    extract_MS1_peaks(dta_select_data, ms1_data)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -394,14 +397,28 @@ def parse_DTASelect(DTASelect_file):
 
     return dta_dict
 
-def extract_MS1_peaks_of_peptides(dta_select_data, ms1):
+def extract_MS1_peaks(dta_select_data, ms1_data):
     """
     Given the dta_select data, and the ms1 from the mzXML,
     try to extract representative peaks for each peptide.
     """
-    
-    
+    extract_ms1_logger = logging.getLogger('extract_MS1_peaks')
+    peptide_dict = {}
 
+    for protein_key, protein_data in dta_select_data.iteritems():
+        for peptide_key, peptide_data in protein_data['peptides'].iteritems():
+            # We split the key and discard the .sqt filename
+            scan_start, scan_stop, charge = [int(elt) for elt in peptide_key.split('.')[1:]]
+            if scan_start != scan_stop:
+                raise FatalError('Unsupported MS2 scan range found in DTASelect')
+            # FYI: We do 1:7 MS1:MS2, which is why we have this modulo division to find the parent scan number.
+            parent_scan = scan_start - (scan_start % 7)
+            extract_ms1_logger.debug('Parent scan %s for MS2 %s (charge %s)' % (parent_scan, scan_start, charge))
+            
+            print peptide_data
+
+
+    # num - num % 7 = parent
     return peptide_dict
 
 
@@ -412,9 +429,6 @@ def run_isodist(output_path, dta_select_data):
     run_isodist_log = logging.getLogger('run_isodist')
     run_isodist_log.info('Running isodist')
 
-    print dta_select_data
-    print len(dta_select_data)
-    print dta_select_data.keys()
     # Find the unique peptides from the dta_select_data dict
     # TODO: Make this a little easier to follow when accessing data?
     unique_peptides = set()
