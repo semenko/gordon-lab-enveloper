@@ -334,7 +334,7 @@ def pre_run_version_checks():
     isodist_version_process = subprocess.Popen([which(TOOLS_AND_VERSIONS['isodist'][0])],
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     isodist_version_process.wait()
-    stdout, _ = isodist_version_process.communicate()
+    stdout = isodist_version_process.communicate()[0]
     local_isodist_version = stdout[23:27] # Snip the isodist version string.
 
     if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
@@ -461,11 +461,17 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     charge_dist = [0]*5
 
     # We don't need the protein key, I guess. Maybe later?
-    # TODO: FIX THIS!
-    # TODO: Peptide keys have collisions! That's bad. Protein key this shit.
     for protein_key, protein_data in dta_select_data.iteritems():
         for peptide_key, peptide_data in protein_data['peptides'].iteritems():
+
+            # Skip already done peptides:
+            # These exist when there are >1 predicted *proteins* in the DTASelect-file
+            if peptide_key in peptide_dict:
+                extract_peak_logger.debug('Peptide from %s already predicted. Skipping.' % (peptide_key,))
+                continue
+
             # We split the key and discard the .sqt filename
+            #noinspection PyTupleAssignmentBalance
             scan_start, scan_stop, charge = [int(elt) for elt in peptide_key.split('.')[1:]]
             if scan_start != scan_stop:
                 raise FatalError('Unsupported MS2 scan range found in DTASelect')
