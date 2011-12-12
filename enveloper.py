@@ -39,6 +39,14 @@ import sys
 ### You may need to edit this block for your setup.
 ### ---------------------------------------------
 
+# http://physics.nist.gov/cuu/Constants/
+
+MASS_PROTON = 1.007276466812
+
+# http://www.nist.gov/pml/data/comp.cfm
+# 14N = 14.0030740048
+# 15N = 15.0001088982
+N15_MASS_SHIFT = 0.997034893
 
 ## *****
 ## Data Paths
@@ -228,7 +236,7 @@ def main():
     signal.signal(signal.SIGINT, handle_SIGINT)
 
     # Check the version numbers, etc.
-    # pre_run_version_checks()
+    pre_run_version_checks()
 
     
     ###### More application-specific functions
@@ -250,8 +258,8 @@ def main():
         
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    #ms1_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
-    ms1_data = {}
+    ms1_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+
     # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
     extract_MS1_peaks(dta_select_data, ms1_data)
@@ -294,7 +302,7 @@ def pre_run_version_checks():
 #    if not os.access(MM9_BOWTIE2_INDEX + ".1.bt2", os.R_OK):
 #        raise FatalError('Unable to read MM9 bowtie2 index. Have you edited the config options in this script?')
 
-    log_prerun('Version checks passed.')
+    log_prerun.info('Version checks passed.')
     return True
 
 
@@ -402,8 +410,12 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     Given the dta_select data, and the ms1 from the mzXML,
     try to extract representative peaks for each peptide.
     """
-    extract_ms1_logger = logging.getLogger('extract_MS1_peaks')
+    global MASS_PROTON, N15_MASS_SHIFT
+    extract_peak_logger = logging.getLogger('extract_MS1_peaks')
     peptide_dict = {}
+
+    # Calculate some charge distributions
+    charge_dist = [0]*5
 
     for protein_key, protein_data in dta_select_data.iteritems():
         for peptide_key, peptide_data in protein_data['peptides'].iteritems():
@@ -411,14 +423,37 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
             scan_start, scan_stop, charge = [int(elt) for elt in peptide_key.split('.')[1:]]
             if scan_start != scan_stop:
                 raise FatalError('Unsupported MS2 scan range found in DTASelect')
-            # FYI: We do 1:7 MS1:MS2, which is why we have this modulo division to find the parent scan number.
-            parent_scan = scan_start - (scan_start % 7)
-            extract_ms1_logger.debug('Parent scan %s for MS2 %s (charge %s)' % (parent_scan, scan_start, charge))
-            
-            print peptide_data
+            # FYI: We do 1:8 MS1:MS2, which is why we have this modulo division to find the parent scan number.
+            parent_scan = scan_start - (scan_start % 8) + 1
+            extract_peak_logger.debug('Parent: %s for MS2: %s (charge %s)' % (parent_scan, scan_start, charge))
+
+            if 1 <= charge <= 5:
+                charge_dist[charge] += 1
+            else:
+                extract_peak_logger.warning('Charge of %s seen in MS2 scan %s' % (charge, scan_start))
+
+            try:
+                # Compute the approximate center of the peak
+                calc_mh = peptide_data['calc_mh'] # This is the +1 state from the DTASelect file
+                peptide_sequence = peptide_data['sequence'][2:-2] # The sequence, minus the protease cleavage sites
+                charge_adjusted_mass = (calc_mh + ((charge - 1) * MASS_PROTON)) / charge
+                n15_adjusted_mass = charge_adjusted_mass + (peptide_sequence.count('N') * N15_MASS_SHIFT)
+                extract_peak_logger.debug('\t CalcMH: %s (Seq: %s, Charge: %s)' % (calc_mh, peptide_sequence, charge))
+                extract_peak_logger.debug('\t Charge Adj MZ: %s' % (charge_adjusted_mass,))
+                extract_peak_logger.debug('\t 15N Adj MZ: %s' % (n15_adjusted_mass,))
+
+                mz_from_parent = ms1_data[parent_scan]['peak']
+
+                #print mz_from_parent
+            except KeyError:
+                raise FatalError('Parent scan not in MS1 dict: Parent calculation wrong? ')
+            #print peptide_data
 
 
-    # num - num % 7 = parent
+    extract_peak_logger.info('Summary of charge distribution:')
+    for index, item in enumerate(charge_dist):
+        extract_peak_logger.info('\t%s: %0.2f%%' % (index, (item / float(sum(charge_dist)) * 100)))
+
     return peptide_dict
 
 
@@ -496,7 +531,6 @@ def parse_mzXML(mzXML_file):
             # These are packed as big-endian IEEE 754 binary32
             floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
-#            print float(len([x for x in ms1[scan_num]['peak'] if x[1] == 0.0]))/len(ms1[scan_num]['peak'])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
             # Skip MS2 data
