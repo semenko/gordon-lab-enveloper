@@ -26,6 +26,8 @@ import datetime
 import gc
 import socket
 import logging
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot
 import os
 import subprocess
@@ -295,6 +297,8 @@ def main():
     # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
     peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data)
+    print "peptide dict len is:"
+    print len(peptide_dict)
     del ms1_data # This is big. Go away.
     gc.enable() # Probably OK now.
 
@@ -457,6 +461,8 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     charge_dist = [0]*5
 
     # We don't need the protein key, I guess. Maybe later?
+    # TODO: FIX THIS!
+    # TODO: Peptide keys have collisions! That's bad. Protein key this shit.
     for protein_key, protein_data in dta_select_data.iteritems():
         for peptide_key, peptide_data in protein_data['peptides'].iteritems():
             # We split the key and discard the .sqt filename
@@ -475,13 +481,13 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
             calc_mh = peptide_data['calc_mh'] # This is the +1 state from the DTASelect file
             # Strip protease cleavage sites and non-[A-Z] characters from the sequence
             peptide_sequence = az_only_pattern.sub('', peptide_data['sequence'][2:-2])
-            charge_adjusted_mass = (calc_mh + ((charge - 1) * MASS_PROTON)) / charge
+            calc_mz = (calc_mh + ((charge - 1) * MASS_PROTON)) / charge
             n_in_peptide = sum([AA_TO_N[aa] for aa in peptide_sequence])
-            n15_adjusted_mass = charge_adjusted_mass + (n_in_peptide * N15_MASS_SHIFT)
+            n15_adjusted_mass = calc_mz + (n_in_peptide * N15_MASS_SHIFT)
 
             # Print for debugging
             extract_peak_logger.debug('\t CalcMH: %s (Seq: %s, Charge: %s)' % (calc_mh, peptide_sequence, charge))
-            extract_peak_logger.debug('\t M/Z: %s' % (charge_adjusted_mass,))
+            extract_peak_logger.debug('\t M/Z: %s' % (calc_mz,))
             extract_peak_logger.debug('\t 15N M/Z: %s' % (n15_adjusted_mass,))
 
             # Now let's pick a range of probable MS1 peaks:
@@ -493,10 +499,10 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
             # Take from w/i our range
             extracted_ms1 = [(m, z) for m, z
                                     in mz_from_parent
-                                    if (n15_adjusted_mass - MS1_WINDOW/2.0) < m < (n15_adjusted_mass + MS1_WINDOW/2.0)]
+                                    if (calc_mz - MS1_WINDOW/2.0) < m < (n15_adjusted_mass + MS1_WINDOW/2.0)]
 
             peptide_dict[peptide_key] = {'sequence': peptide_sequence,
-                                         'mz': charge_adjusted_mass,
+                                         'mz': calc_mz,
                                          'n15mz': n15_adjusted_mass,
                                          'peaks': extracted_ms1, }
 
@@ -514,16 +520,30 @@ def make_peak_graphs(peptide_dict):
 
     for peptide_key, peptide_value in peptide_dict.iteritems():
         graph_log.debug('Generating graph for %s' % peptide_key)
-        fig = matplotlib.pyplot.figure()
+
+        # Set up our figure
+        fig = matplotlib.pyplot.figure(figsize=(12, 5))
         fig.suptitle('%s' % (peptide_key, ))
+        matplotlib.pyplot.xlabel('M/Z')
+        matplotlib.pyplot.ylabel('Intens')
+
+        # Add some metadata in a box
+        matplotlib.pyplot.annotate("Seq: %s\nMZ: %0.4f\n15N MZ: %0.4f" %
+                                   (peptide_value['sequence'], peptide_value['mz'], peptide_value['n15mz']),
+            (0.85, 0.95),
+            xycoords="axes fraction", va="center", ha="left",
+            bbox=dict(boxstyle="round, pad=1", fc="w"))
+
+        # Add our actual data (we need to add a Plot to our Figure)
         ax = fig.add_subplot(111)
-        ax.plot([mz[0] for mz in peptide_value['peaks']],
-                [mz[1] for mz in peptide_value['peaks']],
-                '-', linewidth = 1)
-        ax.autoscale_view()
+        #noinspection PyTupleAssignmentBalance
+        m, z = zip(*peptide_value['peaks'])
+        ax.plot(m, z, '-', linewidth = 1)
+        #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
-# This is dangerous. Don't do it.
-#        matplotlib.pyplot.savefig("graphs/%s.png" % (peptide_key,))
+        # TODO: Sanitize peptide_key
+        # This is dangerous!!
+        matplotlib.pyplot.savefig("graphs/%s.png" % (peptide_key,))
 
 #    matplotlib.pyplot.show()
 
