@@ -26,6 +26,8 @@ import datetime
 import gc
 import socket
 import logging
+import matplotlib.pyplot
+#import pylab
 import os
 import subprocess
 import random
@@ -73,6 +75,10 @@ AA_TO_N = {
     'U': 1,
     'O': 3,
 }
+
+# In daltons, a windows to choose MS1 scans
+# e.g. a window of 20 on 500 da will be from [490:510]
+MS1_WINDOW = 20
 
 
 ## *****
@@ -289,7 +295,11 @@ def main():
 
     # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
-    extract_MS1_peaks(dta_select_data, ms1_data)
+    peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data)
+    del ms1_data # This is big. Go away.
+
+    # Let's make some matplotlib graphs, because … why not?
+    make_peak_graphs(peptide_dict)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -437,7 +447,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     Given the dta_select data, and the ms1 from the mzXML,
     try to extract representative peaks for each peptide.
     """
-    global MASS_PROTON, N15_MASS_SHIFT, AA_TO_N
+    global MASS_PROTON, N15_MASS_SHIFT, AA_TO_N, MS1_WINDOW
     extract_peak_logger = logging.getLogger('extract_MS1_peaks')
     peptide_dict = {}
     
@@ -470,14 +480,24 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
 
             # Print for debugging
             extract_peak_logger.debug('\t CalcMH: %s (Seq: %s, Charge: %s)' % (calc_mh, peptide_sequence, charge))
-            extract_peak_logger.debug('\t Charge Adj MZ: %s' % (charge_adjusted_mass,))
-            extract_peak_logger.debug('\t 15N Adj MZ: %s' % (n15_adjusted_mass,))
+            extract_peak_logger.debug('\t M/Z: %s' % (charge_adjusted_mass,))
+            extract_peak_logger.debug('\t 15N M/Z: %s' % (n15_adjusted_mass,))
 
+            # Now let's pick a range of probable MS1 peaks:
             try:
                 mz_from_parent = ms1_data[parent_scan]['peak']
             except KeyError:
                 raise FatalError('Parent scan not in MS1 dict: Parent calculation wrong?')
 
+            # Take from w/i our range
+            extracted_ms1 = [(m, z) for m, z
+                                    in mz_from_parent
+                                    if (n15_adjusted_mass - MS1_WINDOW/2.0) < m < (n15_adjusted_mass + MS1_WINDOW/2.0)]
+
+            peptide_dict[peptide_key] = {'sequence': peptide_sequence,
+                                         'mz': charge_adjusted_mass,
+                                         'n15mz': n15_adjusted_mass,
+                                         'peaks': extracted_ms1, }
 
     extract_peak_logger.info('Summary of charge distribution:')
     for index, item in enumerate(charge_dist):
@@ -485,6 +505,28 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
 
     return peptide_dict
 
+def make_peak_graphs(peptide_dict):
+    """
+    Make some graphs of the peaks
+    """
+    graph_log = logging.getLogger('make_peak_graphs')
+
+    for peptide_key, peptide_value in peptide_dict.iteritems():
+        graph_log.debug('Generating graph for %s' % peptide_key)
+        fig = matplotlib.pyplot.figure()
+        fig.suptitle('%s' % (peptide_key, ))
+        ax = fig.add_subplot(111)
+        ax.plot([mz[0] for mz in peptide_value['peaks']],
+                [mz[1] for mz in peptide_value['peaks']],
+                '-', linewidth = 1)
+        ax.autoscale_view()
+        ax.grid(True)
+#        matplotlib.pyplot.savefig("graphs/%s.png" % (peptide_key,))
+
+#    matplotlib.pyplot.show()
+
+
+    return True
 
 def run_isodist(output_path, dta_select_data):
     """
