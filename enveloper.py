@@ -132,6 +132,7 @@ class FatalError(Exception):
         if USE_DRMAA:
             # Terminate any running jobs.
             for job_id in DRMAA_RUNNING_JOBS:
+                #noinspection PyUnresolvedReferences
                 DRMAA_SESSION.control(job_id, drmaa.JobControlAction.TERMINATE)
                 fatal_logger.critical('Killed SGE/DRMAA job %s' % job_id)
 
@@ -148,6 +149,7 @@ class ColorFormatter(logging.Formatter):
             "%(message)-100s "
             "($BOLD%(filename)s$RESET:%(lineno)d)")
 
+  #noinspection PyTupleAssignmentBalance
   BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
 
   RESET_SEQ = "\033[0m"
@@ -221,6 +223,7 @@ def main():
 
 
     # Parse the input and check.
+    #noinspection PyTupleAssignmentBalance
     (options, args) = parser.parse_args()
 
     if not len(args) == 1:
@@ -297,10 +300,9 @@ def main():
     # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
     peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data)
-    print "peptide dict len is:"
-    print len(peptide_dict)
-    del ms1_data # This is big. Go away.
-    gc.enable() # Probably OK now.
+
+    gc.enable() # Probably OK now
+    del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
     # Let's make some matplotlib graphs, because … why not?
     make_peak_graphs(peptide_dict)
@@ -523,6 +525,7 @@ def make_peak_graphs(peptide_dict):
     Make some graphs of the peaks
     """
     graph_log = logging.getLogger('make_peak_graphs')
+    graph_log.info('Generating graphs. This may take a few minutes.')
 
     for peptide_key, peptide_value in peptide_dict.iteritems():
         graph_log.debug('Generating graph for %s' % peptide_key)
@@ -547,8 +550,7 @@ def make_peak_graphs(peptide_dict):
         ax.plot(m, z, '-', linewidth = 1)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
-        # TODO: Sanitize peptide_key
-        # This is dangerous!!
+        # TODO: Sanitize peptide_key (This is dangerous!)
         matplotlib.pyplot.savefig("graphs/%s.png" % (peptide_key,))
 
 #    matplotlib.pyplot.show()
@@ -647,6 +649,9 @@ def parse_mzXML(mzXML_file):
 # well, you /could/ run this on Windows. :/
 # Adapted from: http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
 def which(program):
+    """
+    Same as system 'which' command
+    """
     def is_exe(fpath):
         return os.path.exists(fpath) and os.access(fpath, os.X_OK)
 
