@@ -29,6 +29,7 @@ import logging
 import os
 import subprocess
 import random
+import re
 import time
 import signal
 import struct
@@ -40,13 +41,39 @@ import sys
 ### ---------------------------------------------
 
 # http://physics.nist.gov/cuu/Constants/
-
 MASS_PROTON = 1.007276466812
 
 # http://www.nist.gov/pml/data/comp.cfm
 # 14N = 14.0030740048
 # 15N = 15.0001088982
 N15_MASS_SHIFT = 0.997034893
+
+# TODO: Gabe double check, because why not.
+AA_TO_N = {
+    'A': 1,
+    'R': 4,
+    'N': 2,
+    'D': 1,
+    'C': 1,
+    'E': 1,
+    'Q': 2,
+    'G': 1,
+    'H': 3,
+    'I': 1,
+    'L': 1,
+    'K': 2,
+    'M': 1,
+    'F': 1,
+    'P': 1,
+    'S': 1,
+    'T': 1,
+    'W': 2,
+    'Y': 1,
+    'V': 1,
+    'U': 1,
+    'O': 3,
+}
+
 
 ## *****
 ## Data Paths
@@ -410,9 +437,11 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     Given the dta_select data, and the ms1 from the mzXML,
     try to extract representative peaks for each peptide.
     """
-    global MASS_PROTON, N15_MASS_SHIFT
+    global MASS_PROTON, N15_MASS_SHIFT, AA_TO_N
     extract_peak_logger = logging.getLogger('extract_MS1_peaks')
     peptide_dict = {}
+    
+    az_only_pattern = re.compile('[^A-Z]+')
 
     # Calculate some charge distributions
     charge_dist = [0]*5
@@ -425,29 +454,29 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
                 raise FatalError('Unsupported MS2 scan range found in DTASelect')
             # FYI: We do 1:8 MS1:MS2, which is why we have this modulo division to find the parent scan number.
             parent_scan = scan_start - (scan_start % 8) + 1
-            extract_peak_logger.debug('Parent: %s for MS2: %s (charge %s)' % (parent_scan, scan_start, charge))
+            extract_peak_logger.debug('Parent: %s for MS2: %s' % (parent_scan, scan_start))
 
             if 1 <= charge <= 5:
                 charge_dist[charge] += 1
             else:
                 extract_peak_logger.warning('Charge of %s seen in MS2 scan %s' % (charge, scan_start))
 
+            calc_mh = peptide_data['calc_mh'] # This is the +1 state from the DTASelect file
+            # Strip protease cleavage sites and non-[A-Z] characters from the sequence
+            peptide_sequence = az_only_pattern.sub('', peptide_data['sequence'][2:-2])
+            charge_adjusted_mass = (calc_mh + ((charge - 1) * MASS_PROTON)) / charge
+            n_in_peptide = sum([AA_TO_N[aa] for aa in peptide_sequence])
+            n15_adjusted_mass = charge_adjusted_mass + (n_in_peptide * N15_MASS_SHIFT)
+
+            # Print for debugging
+            extract_peak_logger.debug('\t CalcMH: %s (Seq: %s, Charge: %s)' % (calc_mh, peptide_sequence, charge))
+            extract_peak_logger.debug('\t Charge Adj MZ: %s' % (charge_adjusted_mass,))
+            extract_peak_logger.debug('\t 15N Adj MZ: %s' % (n15_adjusted_mass,))
+
             try:
-                # Compute the approximate center of the peak
-                calc_mh = peptide_data['calc_mh'] # This is the +1 state from the DTASelect file
-                peptide_sequence = peptide_data['sequence'][2:-2] # The sequence, minus the protease cleavage sites
-                charge_adjusted_mass = (calc_mh + ((charge - 1) * MASS_PROTON)) / charge
-                n15_adjusted_mass = charge_adjusted_mass + (peptide_sequence.count('N') * N15_MASS_SHIFT)
-                extract_peak_logger.debug('\t CalcMH: %s (Seq: %s, Charge: %s)' % (calc_mh, peptide_sequence, charge))
-                extract_peak_logger.debug('\t Charge Adj MZ: %s' % (charge_adjusted_mass,))
-                extract_peak_logger.debug('\t 15N Adj MZ: %s' % (n15_adjusted_mass,))
-
                 mz_from_parent = ms1_data[parent_scan]['peak']
-
-                #print mz_from_parent
             except KeyError:
-                raise FatalError('Parent scan not in MS1 dict: Parent calculation wrong? ')
-            #print peptide_data
+                raise FatalError('Parent scan not in MS1 dict: Parent calculation wrong?')
 
 
     extract_peak_logger.info('Summary of charge distribution:')
