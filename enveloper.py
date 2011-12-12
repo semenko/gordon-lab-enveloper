@@ -27,7 +27,6 @@ import gc
 import socket
 import logging
 import matplotlib.pyplot
-#import pylab
 import os
 import subprocess
 import random
@@ -297,6 +296,7 @@ def main():
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
     peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data)
     del ms1_data # This is big. Go away.
+    gc.enable() # Probably OK now.
 
     # Let's make some matplotlib graphs, because … why not?
     make_peak_graphs(peptide_dict)
@@ -309,7 +309,7 @@ def main():
     if USE_DRMAA:
         DRMAA_SESSION.exit()
 
-    log_main.info("Execution took: %s secs." % (time.time()-starttime))
+    log_main.info("Execution took: %0.2f secs." % (time.time() - starttime))
 
 
 def pre_run_version_checks():
@@ -394,8 +394,8 @@ def parse_DTASelect(DTASelect_file):
                 # 'Sequence Count', 'Spectrum Count', 'Sequence Coverage', 'Length', 'MolWt', 'pI', 'Validation Status', 'Descriptive Name'
                 metadata_dict = dta_dict[line[0]]['metadata']
                 keys = ['seq_count', 'spect_count', 'seq_cov', 'length', 'molwt', 'pI', 'validated', 'name']
-                type = [int, int, str, int, int, float, str, str]
-                for key, value, cast in zip(keys, line[1:], type):
+                types = [int, int, str, int, int, float, str, str]
+                for key, value, cast in zip(keys, line[1:], types):
                     metadata_dict[key] = cast(value)
  
 
@@ -416,10 +416,10 @@ def parse_DTASelect(DTASelect_file):
                 if peptide_key in peptide_dict:
                     raise FatalError('Duplicate FileName key in DTASelect-filter.txt')
 
-                keys = ['unique', 'xcorr', 'delt_cn', 'conf', 'mh', 'calc_mh' ,'tot_intensity', 'spr', 'prob_score', 'ion_proportion', 'redundancy', 'sequence']
-                type = [bool, float, float, float, float, float, float, float, float, float, int, str]
+                keys = ['unique', 'xcorr', 'delt_cn', 'conf', 'mh', 'calc_mh', 'tot_intensity', 'spr', 'prob_score', 'ion_proportion', 'redundancy', 'sequence']
+                types = [bool, float, float, float, float, float, float, float, float, float, int, str]
                 peptide_dict[peptide_key] = {}
-                for key, value, cast in zip(keys, line, type):
+                for key, value, cast in zip(keys, line, types):
                     peptide_dict[peptide_key][key] = cast(value)
 
             elif len(line) == 4:
@@ -456,6 +456,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     # Calculate some charge distributions
     charge_dist = [0]*5
 
+    # We don't need the protein key, I guess. Maybe later?
     for protein_key, protein_data in dta_select_data.iteritems():
         for peptide_key, peptide_data in protein_data['peptides'].iteritems():
             # We split the key and discard the .sqt filename
@@ -521,6 +522,7 @@ def make_peak_graphs(peptide_dict):
                 '-', linewidth = 1)
         ax.autoscale_view()
         ax.grid(True)
+# This is dangerous. Don't do it.
 #        matplotlib.pyplot.savefig("graphs/%s.png" % (peptide_key,))
 
 #    matplotlib.pyplot.show()
@@ -600,7 +602,7 @@ def parse_mzXML(mzXML_file):
 
             decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            floating_tuple= struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
+            floating_tuple = struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
@@ -622,7 +624,7 @@ def which(program):
     def is_exe(fpath):
         return os.path.exists(fpath) and os.access(fpath, os.X_OK)
 
-    fpath, fname = os.path.split(program)
+    fpath, _ = os.path.split(program)
     if fpath:
         if is_exe(program):
             return program
