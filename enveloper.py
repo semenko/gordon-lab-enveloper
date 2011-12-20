@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.6
 # -*- coding: utf-8 -*-
 # 
 # Copyright (c) 2011 Nick Semenkovich <semenko@alum.mit.edu> / WUSTL
@@ -25,6 +25,7 @@ import csv
 import datetime
 import gc
 import socket
+import hashlib
 import logging
 import matplotlib
 matplotlib.use('Agg')
@@ -280,10 +281,6 @@ def main():
     # Parse DTA Select results file
     dta_select_data = parse_DTASelect(input_directory.rstrip('/') + "/DTASelect-filter.txt")
 
-    # Take the unique DTA Select peptide fragments and run isodist
-    run_isodist(input_directory.rstrip('/'), dta_select_data)
-
-
     # Garbage collection KILLS performance.
     # This is probably 2/2 http://bugs.python.org/issue4074
     # Fixed in 2.7 branch
@@ -304,6 +301,10 @@ def main():
     gc.enable() # Probably OK now
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
+    # Time to call isodist!
+    run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict)
+
+    exit()
     # Let's make some matplotlib graphs, because … why not?
     make_peak_graphs(peptide_dict)
 
@@ -342,8 +343,25 @@ def pre_run_version_checks():
     if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
         raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
 
-#    if not os.access(MM9_BOWTIE2_INDEX + ".1.bt2", os.R_OK):
-#        raise FatalError('Unable to read MM9 bowtie2 index. Have you edited the config options in this script?')
+    # Note: We could clean out this directory if we wanted, but I tend to avoid sometimes dangerous rm calls.
+    # Instead, we'll overwrite peak files, and if we can't, we'll raise an error.
+    if not os.access("./isodist/peaks/", os.W_OK):
+        raise FatalError('Unable to write peaks to isodist directory. Make sure it is writeable.')
+
+    # We shipped with three config files: exp_atom_defs.txt, res_15Nshift.txt, and 15Nshift.in
+    # Make sure they're unmodified, or warn users they've changed.
+    isodist_files = [('./isodist/exp_atom_defs.txt', 'bbd69fd559741d93f0856ad6b9d7f8e8'),
+                    ('./isodist/res_15Nshift.txt', 'c139deac216d13b6bf90f0041837fe1b'),
+                    ('./isodist/15Nshift.in', 'f02a47ffe6a4fd2cbf9c03ca9b527972')]
+    isodist_observed_hashes = [hashlib.md5(file(fname).read()).hexdigest() for fname, _ in isodist_files]
+
+    for input_file_pair, observed_hash in zip(isodist_files, isodist_observed_hashes):
+        fname, valid_hash = input_file_pair
+        if not valid_hash == observed_hash:
+            # Are you seeing this error?
+            # That's OK if you modified the input files. Otherwise, the are corrupt.
+            log_prerun.warn('isodist input file has been modified: %s' % (fname,))
+
 
     log_prerun.info('Version checks passed.')
     return True
@@ -512,6 +530,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
             peptide_dict[peptide_key] = {'sequence': peptide_sequence,
                                          'mz': calc_mz,
                                          'n15mz': n15_adjusted_mass,
+                                         'charge': charge,
                                          'peaks': extracted_ms1, }
 
     extract_peak_logger.info('Summary of charge distribution:')
@@ -558,12 +577,12 @@ def make_peak_graphs(peptide_dict):
 
     return True
 
-def run_isodist(output_path, dta_select_data):
+def run_isodist(output_path, dta_select_data, peptide_dict):
     """
     Run isodist.
     """
-    run_isodist_log = logging.getLogger('run_isodist')
-    run_isodist_log.info('Running isodist')
+    isodist_log = logging.getLogger('run_isodist')
+    isodist_log.info('Running isodist')
 
     # Find the unique peptides from the dta_select_data dict
     # TODO: Make this a little easier to follow when accessing data?
@@ -572,13 +591,37 @@ def run_isodist(output_path, dta_select_data):
         for peptide_data in data['peptides'].values():
             unique_peptides.add(peptide_data['sequence'][2:-2])
 
-    run_isodist_log.info('%s unique peptide sequences found' % (len(unique_peptides),))
+    isodist_log.info('%s unique peptide sequences found' % (len(unique_peptides),))
+
+    isodist_log.info('Writing M/Z-intens TSV files to ./isodist/peaks/')
+    # Populate the 15Nshift.batch input file, which is specified by the 15Nshift.in file
+    try:
+        batchfile = open('./isodist/15Nshift.batch', 'w')
+    except IOError:
+        raise FatalError('Could not create ./isodist/15Nshift.batch')
+
+    # Write M/Z-intens pairs to TSV files for isodist
+    for peptide_key, peptide_value in peptide_dict.iteritems():
+        # Update our batchfile with a pointer to the new TSV peak data
+        print >>batchfile, "%s %s peaks/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key)
+
+        try:
+            f = open('./isodist/peaks/%s.tsv' % (peptide_key,), 'w')
+        except IOError:
+            raise FatalError('Could not write to ./isodist/peaks/%s.tsv file!' % (peptide_key,))
+
+        for m, z in peptide_value['peaks']:
+            print >>f, "%s\t%s" % (m, z)
+        f.close()
+
+    batchfile.close()
+
 
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA:
-        run_isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
+        isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
     else:
-        run_isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
+        isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
 
 
 def parse_mzXML(mzXML_file):
