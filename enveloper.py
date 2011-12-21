@@ -30,6 +30,7 @@ import logging
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot
+import multiprocessing
 import os
 import subprocess
 import random
@@ -207,10 +208,9 @@ def main():
     parser.add_option("--force-gc", help="Force garbage collection. (Slow!)",
                       default=False, action="store_true", dest="force_gc")
 
-    # This ignores hyperthreading pseudo-cores, which is fine since we presumably hose the ALU.
-    # TODO: Change default when DRMAA is enabled.
-    parser.add_option("--threads", help="Threads. We parallelize the invocations of RNAhybrid. [Default: # of CPU cores]",
-                      default=os.sysconf('SC_NPROCESSORS_ONLN'), action="store", type="int", dest="threads")
+    # This explicitly ignores hyperthreading pseudo-cores since isodist presumably hoses the ALU.
+    parser.add_option("--max-children", help="Maximum number of isodist children to spawn. [Default: # of CPU cores]",
+                      default=os.sysconf('SC_NPROCESSORS_ONLN'), action="store", type="int", dest="max_spawn_children")
     parser.add_option("--profile", help="Profile. Invokes the yappi python profiling engine. Will slow down execution.",
                       default=False, action="store_true", dest="profileMe")
 
@@ -233,6 +233,10 @@ def main():
     input_directory = args[0]
     if not os.access(input_directory, os.R_OK):
         parser.error("Cannot read input directory.")
+
+    # Check the #cpus requested
+    if not 0 <= options.max_spawn_children <= 128:
+        parser.error("Invalid range for CPU limit. Choose from 0-128.")
 
     # Make sure we have some appropriately named input files, so we don't die later.
     directory_list = os.listdir(input_directory)
@@ -302,7 +306,7 @@ def main():
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
     # Time to call isodist!
-    run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict)
+    run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
 
     exit()
     # Let's make some matplotlib graphs, because … why not?
@@ -574,10 +578,9 @@ def make_peak_graphs(peptide_dict):
 
 #    matplotlib.pyplot.show()
 
-
     return True
 
-def run_isodist(output_path, dta_select_data, peptide_dict):
+def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
     """
     Run isodist.
     """
@@ -593,35 +596,97 @@ def run_isodist(output_path, dta_select_data, peptide_dict):
 
     isodist_log.info('%s unique peptide sequences found' % (len(unique_peptides),))
 
-    isodist_log.info('Writing M/Z-intens TSV files to ./isodist/peaks/')
-    # Populate the 15Nshift.batch input file, which is specified by the 15Nshift.in file
-    try:
-        batchfile = open('./isodist/15Nshift.batch', 'w')
-    except IOError:
-        raise FatalError('Could not create ./isodist/15Nshift.batch')
+    # Isodist settings
+    isodist_settings = {'number_of_iterations': 5,
+                        'guess_for_baseline': "150.0 auto",
+                        'accuracy_offset': "0.01 variable",
+                        'gaussian_width': "0.003 variable", }
 
-    # Write M/Z-intens pairs to TSV files for isodist
+    input_template = "fitit\nbatch/%(batchfile_name)s.batch\nexp_atom_defs.txt\nres_15Nshift.txt\n" + \
+                        "%(number_of_iterations)s\n100.0\n%(guess_for_baseline)s\n" + \
+                        "%(accuracy_offset)s\n%(gaussian_width)s"
+
+    isodist_log.info('Creating isodist input files in ./isodist/')
     for peptide_key, peptide_value in peptide_dict.iteritems():
-        # Update our batchfile with a pointer to the new TSV peak data
-        print >>batchfile, "%s %s peaks/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key)
-
         try:
-            f = open('./isodist/peaks/%s.tsv' % (peptide_key,), 'w')
+            # We could rewrite isodist to take more flags, but for now let's just use the default (messy) format.
+            # We make so many input files so we have discrete work units for parallel computation.
+            input = open('./isodist/input/%s.in' % (peptide_key,), 'w')
+            batch = open('./isodist/batch/%s.batch' % (peptide_key,), 'w')
+            peaks = open('./isodist/peaks/%s.tsv' % (peptide_key,), 'w')
         except IOError:
-            raise FatalError('Could not write to ./isodist/peaks/%s.tsv file!' % (peptide_key,))
+            raise FatalError('Could not write an ./isodist/ file!')
 
+
+        # Make the .in file, which is a big, annoying template
+        isodist_settings['batchfile_name'] = peptide_key
+        print >>input, input_template % isodist_settings
+
+        # Make the batchfile
+        print >>batch, "%s %s peaks/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key)
+
+        # Write the peaks
         for m, z in peptide_value['peaks']:
-            print >>f, "%s\t%s" % (m, z)
-        f.close()
+            print >>peaks, "%s\t%s" % (m, z)
 
-    batchfile.close()
+        input.close()
+        batch.close()
+        peaks.close()
 
+           #    isodist_log.critical('isodist failed to execute on %s' % (infile,))
+            #    isodist_log.critical('Results may be stale or invalid!')
 
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA:
         isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
+        raise FatalError('Not implemented.')
     else:
         isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
+
+        pool = multiprocessing.Pool(max_spawn_children)
+        tasks = peptide_dict.keys()[:30]
+        print len(tasks)
+        results = []
+
+        # TODO: Mandate Python2.7 (and use error_callback?)
+        r = pool.map_async(_isodist_cmd, tasks, 5, callback=results.append)
+        r.wait() # Block until our pool returns
+        if len(results) != len(peptide_dict):
+            # You could take a set intersection and see what didn't return.
+            raise FatalError('isodist execution failed!')
+
+        isodist_log.info('isodist executions complete')
+
+    return True
+
+        
+def _isodist_cmd(infile):
+    """
+    Run isodist as part of the multiprocessing/map_async command
+    NOTE: This is included here, as map_async/map handle nested functions poorly.
+    """
+
+    # Unspecified excepts are ugly, but we're paranoid here, because the parent thread isn't
+    # the best about catching errors in isodist execution.
+    isodist_cmd_log = logging.getLogger('_isodist_cmd')
+
+    try:
+        p = subprocess.Popen(['nice', 'isodist', './input/%s.in' % (infile,)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd="./isodist/")
+        stdoutdata, stderrdata = p.communicate() # This will block until isodist finishes.
+    except:
+        raise FatalError('isodist execution failed on %s' % (infile,))
+
+    if "FINAL FIT PARAMETERS" not in stdoutdata:
+        print "WTF"
+    if p.returncode or stderrdata or ("FINAL FIT PARAMETERS" not in stdoutdata):
+        raise FatalError('isodist failed on %s' % (infile,))
+
+    # Is this (& the instantiation) slow?
+    isodist_cmd_log.debug('Ran successfully on %s' % (infile,))
+    return infile
 
 
 def parse_mzXML(mzXML_file):
