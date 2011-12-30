@@ -296,11 +296,11 @@ def main():
         
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
-    ms1_data = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
+    ms1_data, ms2_to_ms1 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
 
     # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
-    peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data)
+    peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1)
 
     gc.enable() # Probably OK now
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
@@ -308,7 +308,7 @@ def main():
     # Time to call isodist!
     run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
 
-    exit()
+    # exit()
     # Let's make some matplotlib graphs, because … why not?
     make_peak_graphs(peptide_dict)
 
@@ -470,7 +470,7 @@ def parse_DTASelect(DTASelect_file):
 
     return dta_dict
 
-def extract_MS1_peaks(dta_select_data, ms1_data):
+def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     """
     Given the dta_select data, and the ms1 from the mzXML,
     try to extract representative peaks for each peptide.
@@ -482,7 +482,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
     az_only_pattern = re.compile('[^A-Z]+')
 
     # Calculate some charge distributions
-    charge_dist = [0]*5
+    charge_dist = [0]*6
 
     # We don't need the protein key, I guess. Maybe later?
     for protein_key, protein_data in dta_select_data.iteritems():
@@ -499,8 +499,9 @@ def extract_MS1_peaks(dta_select_data, ms1_data):
             scan_start, scan_stop, charge = [int(elt) for elt in peptide_key.split('.')[1:]]
             if scan_start != scan_stop:
                 raise FatalError('Unsupported MS2 scan range found in DTASelect')
-            # FYI: We do 1:8 MS1:MS2, which is why we have this modulo division to find the parent scan number.
-            parent_scan = scan_start - (scan_start % 8) + 1
+            # Since we don't always have a 7:1 ms2:ms1 ratio, we can't do this awesome modulo. :(
+            # parent_scan = scan_start - ((scan_start - 1) % 8)
+            parent_scan = ms2_to_ms1[scan_start]
             extract_peak_logger.debug('Parent: %s for MS2: %s' % (parent_scan, scan_start))
 
             if 1 <= charge <= 5:
@@ -642,16 +643,15 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
         raise FatalError('Not implemented.')
     else:
         isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
-
+        
         pool = multiprocessing.Pool(max_spawn_children)
-        tasks = peptide_dict.keys()[:30]
-        print len(tasks)
+        tasks = peptide_dict.keys()
         results = []
 
         # TODO: Mandate Python2.7 (and use error_callback?)
-        r = pool.map_async(_isodist_cmd, tasks, 5, callback=results.append)
+        r = pool.map_async(_isodist_cmd, tasks, max_spawn_children, callback=results.append)
         r.wait() # Block until our pool returns
-        if len(results) != len(peptide_dict):
+        if len(results[0]) != len(tasks):
             # You could take a set intersection and see what didn't return.
             raise FatalError('isodist execution failed!')
 
@@ -679,8 +679,6 @@ def _isodist_cmd(infile):
     except:
         raise FatalError('isodist execution failed on %s' % (infile,))
 
-    if "FINAL FIT PARAMETERS" not in stdoutdata:
-        print "WTF"
     if p.returncode or stderrdata or ("FINAL FIT PARAMETERS" not in stdoutdata):
         raise FatalError('isodist failed on %s' % (infile,))
 
@@ -695,10 +693,11 @@ def parse_mzXML(mzXML_file):
     """
     parse_mzXML_log = logging.getLogger('parse_mzXML')
     parse_mzXML_log.info('Parsing mzXML file %s' % (mzXML_file,))
-    
-    # NOTE: We discard ms2 data, since we don't need it.
-    # We'll return this dicts at the end
+
+    # We'll return this dict of ms1 data at the end
     ms1 = {}
+    # We also return an ms2->ms1 parent mapping
+    ms2_to_ms1 = {}
 
     # Establish some dict key names & castings
     # Got rid of some "fixed" keys that never change, per:
@@ -742,14 +741,14 @@ def parse_mzXML(mzXML_file):
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
-            # Skip MS2 data
-            pass
+            # Store ms2 -> parent ms1 scan data. That's it.
+            ms2_to_ms1[scan_num] = int(scan[0].attrib['precursorScanNum'])
         else:
             raise FatalError('Unknown msInstrumentID in mzXML.')
 
     parse_mzXML_log.info('Extracted %s ms1 scans.' % (len(ms1),))
 
-    return ms1
+    return ms1, ms2_to_ms1
 
 
 
