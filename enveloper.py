@@ -573,7 +573,7 @@ def make_peak_graphs(peptide_dict, isodist_results):
         isodist_data = isodist_results[peptide_key]
         matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %0.4f" %
                                    (isodist_data['frc_nx'], isodist_data['chisq']),
-            (0.85, 0.85),
+            (0.85, 0.75),
             xycoords="axes fraction", va="center", ha="left",
             bbox=dict(boxstyle="round, pad=1", fc="w"))
 
@@ -581,11 +581,13 @@ def make_peak_graphs(peptide_dict, isodist_results):
         ax = fig.add_subplot(111)
         #noinspection PyTupleAssignmentBalance
         m, z = zip(*peptide_value['peaks'])
-        ax.plot(m, z, 'bo', linewidth = 1)
+        ax.plot(m, z, 'bx', linewidth = 1)
 
-        isodist_m, isodist_z = zip(*isodist_data['peak_fit'])
-        isodist_adjz = [elt/peptide_value['charge'] for elt in isodist_z]
-        ax.plot(isodist_m, isodist_adjz, 'r+', alpha = 0.5, linewidth = 1)
+        # Let's drop all pairs with intensity <=0, as they mess w/ the graph
+        filtered_peak_data = [(m/float(peptide_value['charge']), z) for m, z in isodist_data['peak_fit'] if z > 0]
+        isodist_m, isodist_z = zip(*filtered_peak_data)
+
+        ax.plot(isodist_m, isodist_z, 'r+', alpha = 0.3, linewidth = 1)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
         # TODO: Sanitize peptide_key (This is dangerous!)
