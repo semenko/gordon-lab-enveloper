@@ -309,10 +309,10 @@ def main():
     #run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
 
     # Let's read those isodist results! WHOOO
-    read_isodist_results('./isodist/', peptide_dict)
+    isodist_results = read_isodist_results('./isodist/', peptide_dict)
 
     # Why not make some matplotlib graphs?
-    #make_peak_graphs(peptide_dict)
+    make_peak_graphs(peptide_dict, isodist_results)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -546,7 +546,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
 
     return peptide_dict
 
-def make_peak_graphs(peptide_dict):
+def make_peak_graphs(peptide_dict, isodist_results):
     """
     Make some graphs of the peaks
     """
@@ -569,11 +569,23 @@ def make_peak_graphs(peptide_dict):
             xycoords="axes fraction", va="center", ha="left",
             bbox=dict(boxstyle="round, pad=1", fc="w"))
 
+        # Let's also grab the metadata from isodist
+        isodist_data = isodist_results[peptide_key]
+        matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %0.4f" %
+                                   (isodist_data['frc_nx'], isodist_data['chisq']),
+            (0.85, 0.85),
+            xycoords="axes fraction", va="center", ha="left",
+            bbox=dict(boxstyle="round, pad=1", fc="w"))
+
         # Add our actual data (we need to add a Plot to our Figure)
         ax = fig.add_subplot(111)
         #noinspection PyTupleAssignmentBalance
         m, z = zip(*peptide_value['peaks'])
-        ax.plot(m, z, '-', linewidth = 1)
+        ax.plot(m, z, 'bo', linewidth = 1)
+
+        isodist_m, isodist_z = zip(*isodist_data['peak_fit'])
+        isodist_adjz = [elt/peptide_value['charge'] for elt in isodist_z]
+        ax.plot(isodist_m, isodist_adjz, 'r+', alpha = 0.5, linewidth = 1)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
         # TODO: Sanitize peptide_key (This is dangerous!)
@@ -667,7 +679,7 @@ def read_isodist_results(input_path, peptide_dict):
     Open our raw isodist results files and parse their delightful results.
     """
     read_logger = logging.getLogger('read_isodist_results')
-    read_logger.info('Reading isodist results.')
+    read_logger.info('Reading isodist results. This will take a few minutes.')
 
     # Save our results in a dict
     isodist_results = {}
@@ -688,21 +700,14 @@ def read_isodist_results(input_path, peptide_dict):
 
         stats.close()
 
-        # Store our tuples of mass:intensity
-        fitted_peaks = []
-
         # Now let's get the raw peak fit data, and add it to the dict, too!
-        peak_fit = open(input_path + 'peaks/' + peptide_key + '.fit', 'rb')
-        #peak_fit = csv.reader(open(input_path + 'peaks/' + peptide_key + '.fit', 'rb'))
+        peak_fit = csv.reader(open(input_path + 'peaks/' + peptide_key + '.fit', 'rb'))
 
-        for line in peak_fit:
-            # I think the csv module is slower than just split here.
-            mass, intensity = line.split(',')
-            fitted_peaks.append((float(mass), float(intensity)))
+        fitted_peaks = [(float(mass), float(intensity)) for mass, intensity in peak_fit]
 
         isodist_results[peptide_key]['peak_fit'] = fitted_peaks
 
-        peak_fit.close()
+    read_logger.info('isodist results loaded successfully.')
 
     return isodist_results
 
