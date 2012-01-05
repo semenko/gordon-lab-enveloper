@@ -302,15 +302,17 @@ def main():
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
     peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1)
 
-    gc.enable() # Probably OK now
+    #gc.enable() # Probably OK now
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
     # Time to call isodist!
-    run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
+    #run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
 
-    # exit()
-    # Let's make some matplotlib graphs, because … why not?
-    make_peak_graphs(peptide_dict)
+    # Let's read those isodist results! WHOOO
+    read_isodist_results('./isodist/', peptide_dict)
+
+    # Why not make some matplotlib graphs?
+    #make_peak_graphs(peptide_dict)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -658,6 +660,51 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
         isodist_log.info('isodist executions complete')
 
     return True
+
+
+def read_isodist_results(input_path, peptide_dict):
+    """
+    Open our raw isodist results files and parse their delightful results.
+    """
+    read_logger = logging.getLogger('read_isodist_results')
+    read_logger.info('Reading isodist results.')
+
+    # Save our results in a dict
+    isodist_results = {}
+
+    # We'll save some of the .batch.csv results
+    keys = ['mw', 'z', 'tim', 'chisq', 'symb', 'mz', 'b', 'off', 'gw', 'amp_u', 'amp_l', 'frc_nx']
+    casts = [float, int, str, float, int, float, float, float, float, float, float, float]
+    # We ran isodist on each peptide
+    for peptide_key in peptide_dict.iterkeys():
+        isodist_results[peptide_key] = {}
+
+        stats = open(input_path + 'batch/' + peptide_key + '.batch.csv', 'rb')
+        statline = stats.readlines()[1]
+
+        # This is parsing the .batch.csv metadata results.
+        for key, value, cast in zip(keys, statline.split(',')[3:], casts):
+            isodist_results[peptide_key][key] = cast(value)
+
+        stats.close()
+
+        # Store our tuples of mass:intensity
+        fitted_peaks = []
+
+        # Now let's get the raw peak fit data, and add it to the dict, too!
+        peak_fit = open(input_path + 'peaks/' + peptide_key + '.fit', 'rb')
+        #peak_fit = csv.reader(open(input_path + 'peaks/' + peptide_key + '.fit', 'rb'))
+
+        for line in peak_fit:
+            # I think the csv module is slower than just split here.
+            mass, intensity = line.split(',')
+            fitted_peaks.append((float(mass), float(intensity)))
+
+        isodist_results[peptide_key]['peak_fit'] = fitted_peaks
+
+        peak_fit.close()
+
+    return isodist_results
 
         
 def _isodist_cmd(infile):
