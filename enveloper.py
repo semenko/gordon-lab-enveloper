@@ -306,7 +306,7 @@ def main():
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
     # Time to call isodist!
-    #run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
+    run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
 
     # Let's read those isodist results! WHOOO
     isodist_results = read_isodist_results('./isodist/', peptide_dict)
@@ -571,9 +571,9 @@ def make_peak_graphs(peptide_dict, isodist_results):
 
         # Let's also grab the metadata from isodist
         isodist_data = isodist_results[peptide_key]
-        matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %0.4f" %
-                                   (isodist_data['frc_nx'], isodist_data['chisq']),
-            (0.85, 0.75),
+        matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %e\nAMP_U: %0.4f\nAMP_L: %0.4f" %
+                                   (isodist_data['frc_nx'], isodist_data['chisq'], isodist_data['amp_u'], isodist_data['amp_l']),
+            (0.85, 0.70),
             xycoords="axes fraction", va="center", ha="left",
             bbox=dict(boxstyle="round, pad=1", fc="w"))
 
@@ -581,13 +581,13 @@ def make_peak_graphs(peptide_dict, isodist_results):
         ax = fig.add_subplot(111)
         #noinspection PyTupleAssignmentBalance
         m, z = zip(*peptide_value['peaks'])
-        ax.plot(m, z, 'bx', linewidth = 1)
+        ax.plot(m, z, 'r-', linewidth = 0.5)
 
         # Let's drop all pairs with intensity <=0, as they mess w/ the graph
         filtered_peak_data = [(m/float(peptide_value['charge']), z) for m, z in isodist_data['peak_fit'] if z > 0]
         isodist_m, isodist_z = zip(*filtered_peak_data)
 
-        ax.plot(isodist_m, isodist_z, 'r+', alpha = 0.3, linewidth = 1)
+        ax.plot(isodist_m, isodist_z, 'b-.', linewidth = 1.2)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
         # TODO: Sanitize peptide_key (This is dangerous!)
