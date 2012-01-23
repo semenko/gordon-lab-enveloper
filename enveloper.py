@@ -354,11 +354,19 @@ def pre_run_version_checks():
     if not os.access("./isodist/peaks/", os.W_OK):
         raise FatalError('Unable to write peaks to isodist directory. Make sure it is writeable.')
 
-    # We shipped with three config files: exp_atom_defs.txt, res_15Nshift.txt, and 15Nshift.in
+    # We shipped with three config files: exp_atom_defs.txt, res_15Nshift_XXX.txt, and 15Nshift_XXX.in
     # Make sure they're unmodified, or warn users they've changed.
     isodist_files = [('./isodist/exp_atom_defs.txt', 'bbd69fd559741d93f0856ad6b9d7f8e8'),
-                    ('./isodist/res_15Nshift.txt', 'c139deac216d13b6bf90f0041837fe1b'),
-                    ('./isodist/15Nshift.in', 'f02a47ffe6a4fd2cbf9c03ca9b527972')]
+                    ('./isodist/res_15Nshift_0.txt', 'c122efa100c61910dcfa7452415576c3'),
+                    ('./isodist/res_15Nshift_20.txt', '6eabe6529ae1c972b6828065d34e3c99'),
+                    ('./isodist/res_15Nshift_50.txt', '14e4ea1dac481dc4db1ba0a603376d74'),
+                    ('./isodist/res_15Nshift_80.txt', 'c139deac216d13b6bf90f0041837fe1b'),
+                    ('./isodist/res_15Nshift_100.txt', '67d4750db22afac837208bbc2c5a7da7'),
+                    ('./isodist/15Nshift_0.in', '78ff7a5961ea47300f334c3f38e3227f'),
+                    ('./isodist/15Nshift_20.in', '4c72a7c5ece671157f1715fa5c4ba9b8'),
+                    ('./isodist/15Nshift_50.in', 'b2296694d4edfb7469bf2ae6108cf00d'),
+                    ('./isodist/15Nshift_80.in', '4f5b43a4324e29d8dfcb7c381153b7a5'),
+                    ('./isodist/15Nshift_100.in', 'a5d109c7d89a12807da0c61552d31585'), ]
     isodist_observed_hashes = [hashlib.md5(file(fname).read()).hexdigest() for fname, _ in isodist_files]
 
     for input_file_pair, observed_hash in zip(isodist_files, isodist_observed_hashes):
