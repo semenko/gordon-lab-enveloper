@@ -211,17 +211,13 @@ def main():
     # This explicitly ignores hyperthreading pseudo-cores since isodist presumably hoses the ALU.
     parser.add_option("--max-children", help="Maximum number of isodist children to spawn. [Default: # of CPU cores]",
                       default=os.sysconf('SC_NPROCESSORS_ONLN'), action="store", type="int", dest="max_spawn_children")
-    parser.add_option("--profile", help="Profile. Invokes the yappi python profiling engine. Will slow down execution.",
-                      default=False, action="store_true", dest="profileMe")
 
-    group = OptionGroup(parser, "Range Settings (optional)")
-    group.add_option("--start-num", help="What number miRNA ortholog group to start scanning from (inclusive).",
-                      default=-1, action="store", type="int", dest="startNum")
-    group.add_option("--stop-num", help="What number miRNA ortholog group to STOP scanning at (exclusive).",
-                      default=-1, action="store", type="int", dest="stopNum")
-    parser.add_option_group(group)
-
-
+    #group = OptionGroup(parser, "Range Settings (optional)")
+    #group.add_option("--start-num", help="What number miRNA ortholog group to start scanning from (inclusive).",
+    #                  default=-1, action="store", type="int", dest="startNum")
+    #group.add_option("--stop-num", help="What number miRNA ortholog group to STOP scanning at (exclusive).",
+    #                  default=-1, action="store", type="int", dest="stopNum")
+    #parser.add_option_group(group)
 
     # Parse the input and check.
     #noinspection PyTupleAssignmentBalance
@@ -625,11 +621,16 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
     isodist_settings = {'number_of_iterations': 5,
                         'guess_for_baseline': "150.0 auto",
                         'accuracy_offset': "0.01 variable",
-                        'gaussian_width': "0.003 variable", }
+                        'gaussian_width': "0.003 variable",
+                        'n_percent': 99999, } # Note: n_percent is adjusted on-the-fly below.
 
-    input_template = "fitit\nbatch/%(batchfile_name)s.batch\nexp_atom_defs.txt\nres_15Nshift.txt\n" + \
-                        "%(number_of_iterations)s\n100.0\n%(guess_for_baseline)s\n" + \
-                        "%(accuracy_offset)s\n%(gaussian_width)s"
+    # These MUST have corresponding res_15Nshift_XXX.txt files in the /isodist/ folder!
+    n_percent_range = [0, 20, 50, 80, 100]
+
+    # TODO: Remove res_15Nshift.txt above? No longer used, now generated on-the-fly.
+    input_template = "fitit\nbatch/%(batchfile_name)s_%(n_percent)s.batch\nexp_atom_defs.txt\n" + \
+                     "res_15Nshift_%(n_percent)s.txt\n%(number_of_iterations)s\n100.0\n%(guess_for_baseline)s\n" + \
+                     "%(accuracy_offset)s\n%(gaussian_width)s"
 
     isodist_log.info('Creating isodist input files in ./isodist/')
     for peptide_key, peptide_value in peptide_dict.iteritems():
@@ -641,7 +642,6 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
             peaks = open('./isodist/peaks/%s.tsv' % (peptide_key,), 'w')
         except IOError:
             raise FatalError('Could not write an ./isodist/ file!')
-
 
         # Make the .in file, which is a big, annoying template
         isodist_settings['batchfile_name'] = peptide_key
@@ -658,8 +658,8 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
         batch.close()
         peaks.close()
 
-           #    isodist_log.critical('isodist failed to execute on %s' % (infile,))
-            #    isodist_log.critical('Results may be stale or invalid!')
+        #    isodist_log.critical('isodist failed to execute on %s' % (infile,))
+        #    isodist_log.critical('Results may be stale or invalid!')
 
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA:
