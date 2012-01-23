@@ -2,3 +2,7 @@
 !.gitignore
 !enveloper.py
 !*.py
+!isodist*
+!*.in
+!*.txt
+
