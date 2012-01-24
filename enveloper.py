@@ -302,13 +302,13 @@ def main():
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
     # Time to call isodist!
-    run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
+    #run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
 
     # Let's read those isodist results! WHOOO
     isodist_results = read_isodist_results('./isodist/', peptide_dict)
 
     # Why not make some matplotlib graphs?
-    make_peak_graphs(peptide_dict, isodist_results)
+    make_peak_graphs(peptide_dict, isodist_results, options.max_spawn_children)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -550,15 +550,46 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
 
     return peptide_dict
 
-def make_peak_graphs(peptide_dict, isodist_results):
+def make_peak_graphs(peptide_dict, isodist_results, max_spawn_children):
     """
-    Make some graphs of the peaks
+    Make some graphs of the peaks. Now featuring parallelism!
     """
+
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This may take a few minutes.')
 
-    for peptide_key, peptide_value in peptide_dict.iteritems():
-        graph_log.debug('Generating graph for %s' % peptide_key)
+    print "children %s" % (max_spawn_children,)
+
+    pool = multiprocessing.Pool(max_spawn_children)
+    tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
+    results = []
+    print len(tasks)
+    print "starting"
+    # TODO: Mandate Python2.7 (and use error_callback?)
+    r = pool.map_async(_peak_graph_cmd, tasks, max_spawn_children, callback=results.append)
+    r.wait() # Block until our pool returns
+    
+    if len(results[0]) != len(tasks):
+        # You could take a set intersection and see what didn't return.
+        raise FatalError('A graphing thread failed!')
+    
+    graph_log.info('Graphs generated successfully.')
+    
+    return True
+
+def _peak_graph_cmd(task):
+    """
+    Generate peak graphs as part of the multiprocessing/map_async command
+    """
+    peptide_key, peptide_value, isodist_results = task
+    print "OMG in thread"
+    graph_thread_log = logging.getLogger('_peak_graphs_cmd')
+    graph_thread_log.debug('Graphing %s' % peptide_key)
+
+    # TODO: Modularize this ASAP
+    n_percent_range = [0, 20, 50, 80, 100]
+
+    for n_percent in n_percent_range:
 
         # Set up our figure
         fig = matplotlib.pyplot.figure(figsize=(12, 5))
@@ -574,7 +605,7 @@ def make_peak_graphs(peptide_dict, isodist_results):
             bbox=dict(boxstyle="round, pad=1", fc="w"))
 
         # Let's also grab the metadata from isodist
-        isodist_data = isodist_results[peptide_key]
+        isodist_data = isodist_results[n_percent]
         matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %e\nAMP_U: %0.4f\nAMP_L: %0.4f" %
                                    (isodist_data['frc_nx'], isodist_data['chisq'], isodist_data['amp_u'], isodist_data['amp_l']),
             (0.85, 0.70),
@@ -595,9 +626,7 @@ def make_peak_graphs(peptide_dict, isodist_results):
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
         # TODO: Sanitize peptide_key (This is dangerous!)
-        matplotlib.pyplot.savefig("graphs/%s.png" % (peptide_key,))
-
-#    matplotlib.pyplot.show()
+        matplotlib.pyplot.savefig("graphs/%s_%s.png" % (peptide_key, n_percent))
 
     return True
 
@@ -622,44 +651,55 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
                         'guess_for_baseline': "150.0 auto",
                         'accuracy_offset': "0.01 variable",
                         'gaussian_width': "0.003 variable",
-                        'n_percent': 99999, } # Note: n_percent is adjusted on-the-fly below.
+                        'n_percent': 0000, } # Note: n_percent is adjusted on-the-fly below.
 
     # These MUST have corresponding res_15Nshift_XXX.txt files in the /isodist/ folder!
     n_percent_range = [0, 20, 50, 80, 100]
 
     # TODO: Remove res_15Nshift.txt above? No longer used, now generated on-the-fly.
-    input_template = "fitit\nbatch/%(batchfile_name)s_%(n_percent)s.batch\nexp_atom_defs.txt\n" + \
+    input_template = "fitit\nbatch/%(batchfile_name)s/%(n_percent)s.batch\nexp_atom_defs.txt\n" + \
                      "res_15Nshift_%(n_percent)s.txt\n%(number_of_iterations)s\n100.0\n%(guess_for_baseline)s\n" + \
                      "%(accuracy_offset)s\n%(gaussian_width)s"
 
     isodist_log.info('Creating isodist input files in ./isodist/')
     for peptide_key, peptide_value in peptide_dict.iteritems():
         try:
-            # We could rewrite isodist to take more flags, but for now let's just use the default (messy) format.
-            # We make so many input files so we have discrete work units for parallel computation.
-            input = open('./isodist/input/%s.in' % (peptide_key,), 'w')
-            batch = open('./isodist/batch/%s.batch' % (peptide_key,), 'w')
-            peaks = open('./isodist/peaks/%s.tsv' % (peptide_key,), 'w')
+            os.mkdir('./isodist/peaks/%s' % (peptide_key,))
+            os.mkdir('./isodist/batch/%s' % (peptide_key,))
+            os.mkdir('./isodist/input/%s' % (peptide_key,))
+        except OSError:
+            # Dir already exists. If it's unwriteable, we'll FATAL it below.
+            pass
+
+        # We need multiple copies of these files -- one pair per estimated N%.
+        # TODO: Rewrite isodist to make %N guess a flag?
+        try:
+            for n_percent in n_percent_range:
+                peaks = open('./isodist/peaks/%s/%s.tsv' % (peptide_key, n_percent), 'w')
+                batch = open('./isodist/batch/%s/%s.batch' % (peptide_key, n_percent), 'w')
+                input = open('./isodist/input/%s/%s.in' % (peptide_key, n_percent), 'w')
+
+                # We could rewrite isodist to take more flags, but for now let's just use the default (messy) format.
+                # We make so many input files so we have discrete work units for parallel computation.
+
+                # Write the raw peaks -- we only need one of these files.
+                for m, z in peptide_value['peaks']:
+                    print >>peaks, "%s\t%s" % (m, z)
+
+                # Make the .in file, which is a big, annoying template
+                isodist_settings['batchfile_name'] = peptide_key
+                isodist_settings['n_percent'] = n_percent
+                print >>input, input_template % isodist_settings
+                
+                # Make the batchfile
+                print >>batch, "%s %s peaks/%s/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key, n_percent)
+
+                peaks.close()
+                batch.close()
+                input.close()
         except IOError:
             raise FatalError('Could not write an ./isodist/ file!')
 
-        # Make the .in file, which is a big, annoying template
-        isodist_settings['batchfile_name'] = peptide_key
-        print >>input, input_template % isodist_settings
-
-        # Make the batchfile
-        print >>batch, "%s %s peaks/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key)
-
-        # Write the peaks
-        for m, z in peptide_value['peaks']:
-            print >>peaks, "%s\t%s" % (m, z)
-
-        input.close()
-        batch.close()
-        peaks.close()
-
-        #    isodist_log.critical('isodist failed to execute on %s' % (infile,))
-        #    isodist_log.critical('Results may be stale or invalid!')
 
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA:
@@ -669,7 +709,8 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
         isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
         
         pool = multiprocessing.Pool(max_spawn_children)
-        tasks = peptide_dict.keys()
+        #tasks = peptide_dict.keys()
+        tasks = [x + "/" + str(y) for x in peptide_dict.keys() for y in n_percent_range]
         results = []
 
         # TODO: Mandate Python2.7 (and use error_callback?)
@@ -698,24 +739,33 @@ def read_isodist_results(input_path, peptide_dict):
     keys = ['mw', 'z', 'tim', 'chisq', 'symb', 'mz', 'b', 'off', 'gw', 'amp_u', 'amp_l', 'frc_nx']
     casts = [float, int, str, float, int, float, float, float, float, float, float, float]
     # We ran isodist on each peptide
-    for peptide_key in peptide_dict.iterkeys():
-        isodist_results[peptide_key] = {}
+#    for peptide_key in peptide_dict.iterkeys():
 
-        stats = open(input_path + 'batch/' + peptide_key + '.batch.csv', 'rb')
+    # TODO: Modularize this ASAP
+    n_percent_range = [0, 20, 50, 80, 100]
+
+    for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in n_percent_range]:
+        # Make the [peptide_key] dict, if it doesn't exist.
+        isodist_results.setdefault(peptide_key, {})
+
+        isodist_results[peptide_key][n_percent] = {}
+
+        # TODO: Change this to a directory tree.
+        stats = open(input_path + 'batch/' + peptide_key + '/' + str(n_percent) + '.batch.csv', 'rb')
         statline = stats.readlines()[1]
 
         # This is parsing the .batch.csv metadata results.
         for key, value, cast in zip(keys, statline.split(',')[3:], casts):
-            isodist_results[peptide_key][key] = cast(value)
+            isodist_results[peptide_key][n_percent][key] = cast(value)
 
         stats.close()
 
         # Now let's get the raw peak fit data, and add it to the dict, too!
-        peak_fit = csv.reader(open(input_path + 'peaks/' + peptide_key + '.fit', 'rb'))
+        peak_fit = csv.reader(open(input_path + 'peaks/' + peptide_key + '/' + str(n_percent) + '.fit', 'rb'))
 
         fitted_peaks = [(float(mass), float(intensity)) for mass, intensity in peak_fit]
 
-        isodist_results[peptide_key]['peak_fit'] = fitted_peaks
+        isodist_results[peptide_key][n_percent]['peak_fit'] = fitted_peaks
 
     read_logger.info('isodist results loaded successfully.')
 
@@ -731,7 +781,8 @@ def _isodist_cmd(infile):
     # Unspecified excepts are ugly, but we're paranoid here, because the parent thread isn't
     # the best about catching errors in isodist execution.
     isodist_cmd_log = logging.getLogger('_isodist_cmd')
-
+    # Is this (& the instantiation) slow?
+    isodist_cmd_log.debug("Running on %s" % (infile,))
     try:
         p = subprocess.Popen(['nice', 'isodist', './input/%s.in' % (infile,)],
             stdout=subprocess.PIPE,
@@ -744,8 +795,6 @@ def _isodist_cmd(infile):
     if p.returncode or stderrdata or ("FINAL FIT PARAMETERS" not in stdoutdata):
         raise FatalError('isodist failed on %s' % (infile,))
 
-    # Is this (& the instantiation) slow?
-    isodist_cmd_log.debug('Ran successfully on %s' % (infile,))
     return infile
 
 
