@@ -303,7 +303,7 @@ def main():
 
 
     # Run isodist unless we're told to skip it. This can be slow.
-    if skip_isodist:
+    if options.skip_isodist:
         log_main.warning('Skipping isodist as requested. Assuming results already exist (may be stale).')
     else:
         run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
@@ -313,7 +313,7 @@ def main():
     isodist_results = read_isodist_results('./isodist/', peptide_dict)
 
     # Why not make some matplotlib graphs?
-    if skip_graphs:
+    if options.skip_graphs:
         log_main.warning('Skipping peak graph generation, as requested.')
     else:
         make_peak_graphs(peptide_dict, isodist_results, options.max_spawn_children)
