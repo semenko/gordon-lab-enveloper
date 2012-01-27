@@ -212,12 +212,12 @@ def main():
     parser.add_option("--max-children", help="Maximum number of isodist children to spawn. [Default: # of CPU cores]",
                       default=os.sysconf('SC_NPROCESSORS_ONLN'), action="store", type="int", dest="max_spawn_children")
 
-    #group = OptionGroup(parser, "Range Settings (optional)")
-    #group.add_option("--start-num", help="What number miRNA ortholog group to start scanning from (inclusive).",
-    #                  default=-1, action="store", type="int", dest="startNum")
-    #group.add_option("--stop-num", help="What number miRNA ortholog group to STOP scanning at (exclusive).",
-    #                  default=-1, action="store", type="int", dest="stopNum")
-    #parser.add_option_group(group)
+    group = OptionGroup(parser, "Skip Sections (optional)")
+    group.add_option("--skip-isodist", help="Do not run isodist. (Isodist results must already exist.)",
+                      default=False, action="store_true", dest="skip_isodist")
+    group.add_option("--skip-graphs", help="Do not generate graphs.",
+                      default=False, action="store_true", dest="skip_graphs")
+    parser.add_option_group(group)
 
     # Parse the input and check.
     #noinspection PyTupleAssignmentBalance
@@ -301,14 +301,22 @@ def main():
     #gc.enable() # Probably OK now
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
-    # Time to call isodist!
-    #run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
+
+    # Run isodist unless we're told to skip it. This can be slow.
+    if skip_isodist:
+        log_main.warning('Skipping isodist as requested. Assuming results already exist (may be stale).')
+    else:
+        run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
+
 
     # Let's read those isodist results! WHOOO
     isodist_results = read_isodist_results('./isodist/', peptide_dict)
 
     # Why not make some matplotlib graphs?
-    make_peak_graphs(peptide_dict, isodist_results, options.max_spawn_children)
+    if skip_graphs:
+        log_main.warning('Skipping peak graph generation, as requested.')
+    else:
+        make_peak_graphs(peptide_dict, isodist_results, options.max_spawn_children)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -558,13 +566,10 @@ def make_peak_graphs(peptide_dict, isodist_results, max_spawn_children):
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This may take a few minutes.')
 
-    print "children %s" % (max_spawn_children,)
-
     pool = multiprocessing.Pool(max_spawn_children)
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
     results = []
-    print len(tasks)
-    print "starting"
+
     # TODO: Mandate Python2.7 (and use error_callback?)
     r = pool.map_async(_peak_graph_cmd, tasks, max_spawn_children, callback=results.append)
     r.wait() # Block until our pool returns
@@ -582,7 +587,7 @@ def _peak_graph_cmd(task):
     Generate peak graphs as part of the multiprocessing/map_async command
     """
     peptide_key, peptide_value, isodist_results = task
-    print "OMG in thread"
+
     graph_thread_log = logging.getLogger('_peak_graphs_cmd')
     graph_thread_log.debug('Graphing %s' % peptide_key)
 
