@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # 
-# Copyright (c) 2011 Nick Semenkovich <semenko@alum.mit.edu> / WUSTL
+# Copyright (c) 2011, 2012 Nick Semenkovich <semenko@alum.mit.edu> / WUSTL
 # 
 # Developed for the Gordon Lab, Washington University in St. Louis (WUSTL)
 # http://gordonlab.wustl.edu/
@@ -12,7 +12,7 @@
 Some envelope stuff with mass spec stuff.
 """
 
-__author__ = 'Nick Semenkovich <semenko@alum.mit.edu> and Gabriel Simon <gsimon@pathology.wustl.edu>'
+__author__ = 'Nick Semenkovich <semenko@alum.mit.edu> and Gabriel Simon <gabrielmsimon@gmail.com>'
 __copyright__ = 'Gordon Lab at Washington University in St. Louis / gordonlab.wustl.edu'
 __license__ = 'MIT'
 __version__ = '1.0'
@@ -53,7 +53,6 @@ MASS_PROTON = 1.007276466812
 # 15N = 15.0001088982
 N15_MASS_SHIFT = 0.997034893
 
-# TODO: Gabe double check, because why not.
 AA_TO_N = {
     'A': 1,
     'R': 4,
@@ -82,12 +81,6 @@ AA_TO_N = {
 # In daltons, a windows to choose MS1 scans
 # e.g. a window of 20 on 500 da will be from [490:510]
 MS1_WINDOW = 20
-
-
-## *****
-## Data Paths
-## *****
-
 
 
 ## *****
@@ -198,7 +191,6 @@ def main():
     # Begin timing execution
 
     starttime = time.time()
-
     parser = OptionParser(usage="usage: %prog [options] input_directory\n\nInput directory must contain:\n\tDTASelect-filter.txt\n\t*.sqt\n\t*.mzXML",
                           version="%prog 1.0")
 
@@ -561,6 +553,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
 def make_peak_graphs(peptide_dict, isodist_results, max_spawn_children):
     """
     Make some graphs of the peaks. Now featuring parallelism!
+    TODO: Remove parallelism. I think this is not threadsafe. :(
     """
 
     graph_log = logging.getLogger('make_peak_graphs')
