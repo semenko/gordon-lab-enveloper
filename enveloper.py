@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.6
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # 
 # Copyright (c) 2011 Nick Semenkovich <semenko@alum.mit.edu> / WUSTL
@@ -335,8 +335,8 @@ def pre_run_version_checks():
     """
     log_prerun = logging.getLogger('pre_run_version_checks')
 
-    if sys.hexversion < 0x02060500:
-        raise FatalError('Outdated Python version. Please use >=2.6.5')
+    if sys.hexversion < 0x02070000:
+        raise FatalError('Outdated Python version. Please use >=2.7')
 
     ### Tool Checks
     # Make sure isodist exists
