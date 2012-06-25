@@ -101,7 +101,7 @@ MAX_THREADS = 1
 # These set paths & minimum version requirements. Checked in TODO
 # Keeping a tool somewhere else? Try: 'bowtie2': ('/my/path/to/bowtie2', '2.0.0-beta3')
 TOOLS_AND_VERSIONS = {
-    'isodist': ('isodist', '2008'),
+    'isodist': ('/home/comp/jglab/semenko/projects/envelope/isodist/bin/isodist_x86linux64', '2008'),
     'other': ('tool', '1.0'),
 }
 
@@ -340,6 +340,7 @@ def pre_run_version_checks():
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     isodist_version_process.wait()
     stdout = isodist_version_process.communicate()[0]
+#    print stdout
     local_isodist_version = stdout[23:27] # Snip the isodist version string.
 
     if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
@@ -645,7 +646,7 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
     isodist_log.info('%s unique peptide sequences found' % (len(unique_peptides),))
 
     # Isodist settings
-    isodist_settings = {'number_of_iterations': 5,
+    isodist_settings = {'number_of_iterations': 10,
                         'guess_for_baseline': "150.0 auto",
                         'accuracy_offset': "0.01 variable",
                         'gaussian_width': "0.003 variable",
@@ -817,7 +818,7 @@ def parse_mzXML(mzXML_file):
     # Open the mzXML
     namespace = "{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}"
     parsed_xml = ElementTree.parse(mzXML_file)
-    scans = parsed_xml.findall("//%sscan" % namespace)
+    scans = parsed_xml.findall(".//%sscan" % namespace)
 
     parse_mzXML_log.info('Found %s scans in mzXML file' % (len(scans),))
     # Loop over each XML scan entry
