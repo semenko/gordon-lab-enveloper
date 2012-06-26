@@ -1,0 +1,83 @@
+Unlabeled plus fractionally 15N labeled		= comment record, not used
+2   =   nspecies
+U  3.0  =   label and initial amplitude species 1
+L  3.5  =   label and initial amplitude species 2
+6       =   number of atom types
+C default	
+H default
+N default
+O default
+S default
+NX  variable 0.7    =   initial value for variable atom
+A default 
+  3 5 1 1 0 0
+  3 5 0 1 0 1
+C default
+  3 5 1 1 1 0
+  3 5 0 1 1 1
+c default
+  5 8 2 2 1 0      Cys modified with acetamide
+  5 8 1 2 1 1      Cys modified with acetamide
+D default
+  4 5 1 3 0 0
+  4 5 0 3 0 1
+E default
+  5 7 1 3 0 0
+  5 7 0 3 0 1
+F default
+  9 9 1 1 0 0
+  9 9 0 1 0 1
+G default
+  2 3 1 1 0 0
+  2 3 0 1 0 1
+H default
+  6 7 3 1 0 0
+  6 7 0 1 0 3
+I default
+  6 11 1 1 0 0
+  6 11 0 1 0 1
+i default
+  6 11 1 1 0 0
+  6 11 0 1 0 1
+K default
+  6 12 2 1 0 0
+  6 12 0 1 0 2
+L default
+  6 11 1 1 0 0
+  6 11 0 1 0 1
+M default
+  5 9 1 1 1 0
+  5 9 0 1 1 1
+N default
+  4 6 2 2 0 0
+  4 6 0 2 0 2
+P default
+  5 7 1 1 0 0
+  5 7 0 1 0 1
+Q default
+  5 8 2 2 0 0
+  5 8 0 2 0 2
+R default
+  6 12 4 1 0 0
+  6 12 0 1 0 4
+S default
+  3 5 1 2 0 0
+  3 5 0 2 0 1
+T default
+  4 7 1 2 0 0
+  4 7 0 2 0 1
+V default
+  5 9 1 1 0 0
+  5 9 0 1 0 1
+W default
+  11 10 2 1 0 0
+  11 10 0 1 0 2
+Y default
+  9 9 1 2 0 0
+  9 9 0 2 0 1
+Z default
+  0 2 0 1 0 0
+  0 2 0 1 0 0
+X default
+  0 1 0 0 0 0
+  0 1 0 0 0 0

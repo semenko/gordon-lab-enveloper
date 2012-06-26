@@ -1,9 +1,0 @@
-fitit       = program options:  fitit tryit
-15Nshift.batch  = batchfile:  file containing peptides, chgs, peaks
-exp_atom_defs.txt  = atomfile
-res_15Nshift_80.txt = resfile
-5         = niter   # of iteractions for each round of least squares
-100.0     = sigma   std deviation of noise (currently read, but not used)
-1.0  auto  = B  :  initial guess for baseline (Default = 1.0)
-0.01      = OFF:  initial guess for accuracy offset  (Default = 0.01)
-0.003     = GW :  initial guess for gaussian width (Use 0.0003 to 0.003) 
