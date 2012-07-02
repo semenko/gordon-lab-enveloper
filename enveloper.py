@@ -197,12 +197,13 @@ def main():
     parser.add_option("-v", "--verbose", help="Be verbose.",
                       default=logging.INFO, action="store_const", const=logging.DEBUG, dest="loglevel")
 
-    parser.add_option("--force-gc", help="Force garbage collection. (Slow!)",
-                      default=False, action="store_true", dest="force_gc")
+    # Disabling GC may speed up execution, but uses more memory.
+    parser.add_option("--disable-gc", help="Disable garbage collection.",
+                      default=False, action="store_true", dest="disable_gc")
 
-    # This explicitly ignores hyperthreading pseudo-cores since isodist presumably hoses the ALU.
-    parser.add_option("--max-children", help="Maximum number of isodist children to spawn. [Default: # of CPU cores]",
-                      default=os.sysconf('SC_NPROCESSORS_ONLN'), action="store", type="int", dest="max_spawn_children")
+    # This explicitly ignores hyperthreading pseudo-cores since isodist and matplotlib presumably hose the ALU.
+    parser.add_option("--num-threads", help="Maximum number of children to spawn for parallelization. [Default: # of CPU cores]",
+                      default=os.sysconf('SC_NPROCESSORS_ONLN'), action="store", type="int", dest="num_threads")
 
     group = OptionGroup(parser, "Skip Sections (optional)")
     group.add_option("--skip-isodist", help="Do not run isodist. (Isodist results must already exist.)",
@@ -223,7 +224,7 @@ def main():
         parser.error("Cannot read input directory.")
 
     # Check the #cpus requested
-    if not 0 <= options.max_spawn_children <= 128:
+    if not 0 <= options.num_threads <= 128:
         parser.error("Invalid range for CPU limit. Choose from 0-128.")
 
     # Make sure we have some appropriately named input files, so we don't die later.
@@ -273,15 +274,14 @@ def main():
     # Parse DTA Select results file
     dta_select_data = parse_DTASelect(input_directory.rstrip('/') + "/DTASelect-filter.txt")
 
-    # Garbage collection KILLS performance.
-    # This is probably 2/2 http://bugs.python.org/issue4074
-    # Fixed in 2.7 branch
-    if options.force_gc:
-        log_main.warning('Running with garbage collection: This is EXTREMELY slow!')
-    else:
-        log_main.info('Disabling garbage collection due to performance issues: Use --force-gc to override.')
+    if options.disable_gc:
+        log_main.info('Disabling garbage collection, since --disable-gc was passed.')
         gc.disable()
-        
+    else:
+        log_main.info('Garbage collection is enabled. Use --disable-gc to override.')
+        if sys.hexversion < 0x02070300:
+            log_main.warning('Garbage collection is EXTREMELY slow on Python < 2.7')
+
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
     ms1_data, ms2_to_ms1 = parse_mzXML(input_directory.rstrip('/') + '/' + [file for file in directory_list if file.endswith('.mzXML')][0])
@@ -298,7 +298,7 @@ def main():
     if options.skip_isodist:
         log_main.warning('Skipping isodist as requested. Assuming results already exist (may be stale).')
     else:
-        run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.max_spawn_children)
+        run_isodist(input_directory.rstrip('/'), dta_select_data, peptide_dict, options.num_threads)
 
 
     # Let's read those isodist results! WHOOO
@@ -308,7 +308,13 @@ def main():
     if options.skip_graphs:
         log_main.warning('Skipping peak graph generation, as requested.')
     else:
-        make_peak_graphs(peptide_dict, isodist_results, options.max_spawn_children)
+        make_peak_graphs(peptide_dict, isodist_results, options.num_threads)
+
+    # Choose winners: rank predictions and choose the best FRC_NX value
+    enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
+
+    # Make HTML summary of enrichment predictions
+    #generate_HTML_summary(enrichment_predictions)
 
     # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
@@ -327,8 +333,10 @@ def pre_run_version_checks():
     """
     log_prerun = logging.getLogger('pre_run_version_checks')
 
-    if sys.hexversion < 0x02070000:
-        raise FatalError('Outdated Python version. Please use >=2.7')
+    # You should be able to use Python < 2.7.3, so long as you *disable* garbage collection.
+    # In Python < 2.7, GC *kills* performance, probably 2/2 http://bugs.python.org/issue4074
+    if sys.hexversion < 0x02070300:
+        raise FatalError('Outdated Python version. Please use >=2.7.3')
 
     ### Tool Checks
     # Make sure isodist exists
@@ -351,19 +359,15 @@ def pre_run_version_checks():
     if not os.access("./isodist/peaks/", os.W_OK):
         raise FatalError('Unable to write peaks to isodist directory. Make sure it is writeable.')
 
-    # We shipped with three config files: exp_atom_defs.txt, res_15Nshift_XXX.txt, and 15Nshift_XXX.in
+    # We shipped with two config files: exp_atom_defs.txt and res_15Nshift_XXX.txt.
+    # The third required file (15Nshift_XXX.in) is dynamically generated.
     # Make sure they're unmodified, or warn users they've changed.
     isodist_files = [('./isodist/exp_atom_defs.txt', 'bbd69fd559741d93f0856ad6b9d7f8e8'),
                     ('./isodist/res_15Nshift_0.txt', 'c122efa100c61910dcfa7452415576c3'),
                     ('./isodist/res_15Nshift_20.txt', '6eabe6529ae1c972b6828065d34e3c99'),
                     ('./isodist/res_15Nshift_50.txt', '14e4ea1dac481dc4db1ba0a603376d74'),
                     ('./isodist/res_15Nshift_80.txt', 'c139deac216d13b6bf90f0041837fe1b'),
-                    ('./isodist/res_15Nshift_100.txt', '67d4750db22afac837208bbc2c5a7da7'),
-                    ('./isodist/15Nshift_0.in', '78ff7a5961ea47300f334c3f38e3227f'),
-                    ('./isodist/15Nshift_20.in', '4c72a7c5ece671157f1715fa5c4ba9b8'),
-                    ('./isodist/15Nshift_50.in', 'b2296694d4edfb7469bf2ae6108cf00d'),
-                    ('./isodist/15Nshift_80.in', '4f5b43a4324e29d8dfcb7c381153b7a5'),
-                    ('./isodist/15Nshift_100.in', 'a5d109c7d89a12807da0c61552d31585'), ]
+                    ('./isodist/res_15Nshift_100.txt', '67d4750db22afac837208bbc2c5a7da7'), ]
     isodist_observed_hashes = [hashlib.md5(file(fname).read()).hexdigest() for fname, _ in isodist_files]
 
     for input_file_pair, observed_hash in zip(isodist_files, isodist_observed_hashes):
@@ -551,21 +555,51 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
 
     return peptide_dict
 
-def make_peak_graphs(peptide_dict, isodist_results, max_spawn_children):
+def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     """
     Make some graphs of the peaks. Now featuring parallelism!
-    TODO: Remove parallelism. I think this is not threadsafe. :(
+    FYI: Threadsafety here is not 100% certain. This may break at high thread numbers (>=24).
+      Although I think that bug was fixed in Python >=2.7.
     """
 
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This may take a few minutes.')
 
-    pool = multiprocessing.Pool(max_spawn_children)
+    pool = multiprocessing.Pool(num_threads)
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
     results = []
 
     # TODO: Mandate Python2.7 (and use error_callback?)
-    r = pool.map_async(_peak_graph_cmd, tasks, max_spawn_children, callback=results.append)
+    r = pool.map_async(_peak_graph_cmd, tasks, num_threads, callback=results.append)
+    r.wait() # Block until our pool returns
+    
+    if len(results[0]) != len(tasks):
+        # You could take a set intersection and see what didn't return.
+        raise FatalError('A graphing thread failed!')
+    
+    graph_log.info('Graphs generated successfully.')
+    
+    return True
+
+def pick_FRC_NX(peptide_dict, isodist_results):
+    """
+    Choose the best isodist FRC_NX enrichment guess. There isn't one clean way to do this.
+    I opt for:
+     Rank by chi_sq from isodist
+     Ensure top four predictions are within 1%
+       If so, choose the average of the four.
+       If not, refuse to make an FRC_NX guess.
+    """
+
+    graph_log = logging.getLogger('make_peak_graphs')
+    graph_log.info('Generating graphs. This may take a few minutes.')
+
+    pool = multiprocessing.Pool(num_threads)
+    tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
+    results = []
+
+    # TODO: Mandate Python2.7 (and use error_callback?)
+    r = pool.map_async(_peak_graph_cmd, tasks, num_threads, callback=results.append)
     r.wait() # Block until our pool returns
     
     if len(results[0]) != len(tasks):
@@ -586,7 +620,7 @@ def _peak_graph_cmd(task):
     graph_thread_log.debug('Graphing %s' % peptide_key)
 
     # TODO: Modularize this ASAP
-    n_percent_range = [0, 20, 50, 80, 100]
+    n_percent_range = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
     for n_percent in n_percent_range:
 
@@ -629,7 +663,7 @@ def _peak_graph_cmd(task):
 
     return True
 
-def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
+def run_isodist(output_path, dta_select_data, peptide_dict, num_threads):
     """
     Run isodist.
     """
@@ -653,7 +687,7 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
                         'n_percent': 0000, } # Note: n_percent is adjusted on-the-fly below.
 
     # These MUST have corresponding res_15Nshift_XXX.txt files in the /isodist/ folder!
-    n_percent_range = [0, 20, 50, 80, 100]
+    n_percent_range = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
     # TODO: Remove res_15Nshift.txt above? No longer used, now generated on-the-fly.
     input_template = "fitit\nbatch/%(batchfile_name)s/%(n_percent)s.batch\nexp_atom_defs.txt\n" + \
@@ -707,13 +741,13 @@ def run_isodist(output_path, dta_select_data, peptide_dict, max_spawn_children):
     else:
         isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
         
-        pool = multiprocessing.Pool(max_spawn_children)
+        pool = multiprocessing.Pool(num_threads)
         #tasks = peptide_dict.keys()
         tasks = [x + "/" + str(y) for x in peptide_dict.keys() for y in n_percent_range]
         results = []
 
         # TODO: Mandate Python2.7 (and use error_callback?)
-        r = pool.map_async(_isodist_cmd, tasks, max_spawn_children, callback=results.append)
+        r = pool.map_async(_isodist_cmd, tasks, num_threads, callback=results.append)
         r.wait() # Block until our pool returns
         if len(results[0]) != len(tasks):
             # You could take a set intersection and see what didn't return.
@@ -741,7 +775,7 @@ def read_isodist_results(input_path, peptide_dict):
 #    for peptide_key in peptide_dict.iterkeys():
 
     # TODO: Modularize this ASAP
-    n_percent_range = [0, 20, 50, 80, 100]
+    n_percent_range = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
     for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in n_percent_range]:
         # Make the [peptide_key] dict, if it doesn't exist.
