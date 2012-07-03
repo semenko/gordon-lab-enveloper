@@ -135,49 +135,49 @@ class FatalError(Exception):
         print "Terminating ..."
         sys.exit(1)
 
-### ---------------------------------------------
-### Colorize the logger class
-### Via StackOverflow: http://stackoverflow.com/questions/384076/how-can-i-make-the-python-logging-output-to-be-colored
-### ---------------------------------------------
 class ColorFormatter(logging.Formatter):
-  FORMAT = ("$BOLD%(name)-25s$RESET: %(levelname)-20s: "
-            "%(message)-100s "
-            "($BOLD%(filename)s$RESET:%(lineno)d)")
+    """
+    Colorize the logger class
+    Via StackOverflow: http://stackoverflow.com/questions/384076/how-can-i-make-the-python-logging-output-to-be-colored
+    """
+    FORMAT = ("$BOLD%(name)-25s$RESET: %(levelname)-20s: "
+              "%(message)-100s "
+              "($BOLD%(filename)s$RESET:%(lineno)d)")
+    
+    #noinspection PyTupleAssignmentBalance
+    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
+    
+    RESET_SEQ = "\033[0m"
+    COLOR_SEQ = "\033[1;%dm"
+    BOLD_SEQ = "\033[1m"
+    
+    COLORS = {
+        'WARNING': YELLOW,
+        'INFO': WHITE,
+        'DEBUG': BLUE,
+        'CRITICAL': YELLOW,
+        'ERROR': RED
+        }
+    
+    def formatter_msg(self, msg, use_color = True):
+        if use_color:
+            msg = msg.replace("$RESET", self.RESET_SEQ).replace("$BOLD", self.BOLD_SEQ)
+        else:
+            msg = msg.replace("$RESET", "").replace("$BOLD", "")
+        return msg
 
-  #noinspection PyTupleAssignmentBalance
-  BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
+    def __init__(self, use_color=True):
+        msg = self.formatter_msg(self.FORMAT, use_color)
+        logging.Formatter.__init__(self, msg)
+        self.use_color = use_color
 
-  RESET_SEQ = "\033[0m"
-  COLOR_SEQ = "\033[1;%dm"
-  BOLD_SEQ = "\033[1m"
-
-  COLORS = {
-    'WARNING': YELLOW,
-    'INFO': WHITE,
-    'DEBUG': BLUE,
-    'CRITICAL': YELLOW,
-    'ERROR': RED
-  }
-
-  def formatter_msg(self, msg, use_color = True):
-    if use_color:
-      msg = msg.replace("$RESET", self.RESET_SEQ).replace("$BOLD", self.BOLD_SEQ)
-    else:
-      msg = msg.replace("$RESET", "").replace("$BOLD", "")
-    return msg
-
-  def __init__(self, use_color=True):
-    msg = self.formatter_msg(self.FORMAT, use_color)
-    logging.Formatter.__init__(self, msg)
-    self.use_color = use_color
-
-  def format(self, record):
-    levelname = record.levelname
-    if self.use_color and levelname in self.COLORS:
-      fore_color = 30 + self.COLORS[levelname]
-      levelname_color = self.COLOR_SEQ % fore_color + levelname + self.RESET_SEQ
-      record.levelname = levelname_color
-    return logging.Formatter.format(self, record)
+    def format(self, record):
+        levelname = record.levelname
+        if self.use_color and levelname in self.COLORS:
+            fore_color = 30 + self.COLORS[levelname]
+            levelname_color = self.COLOR_SEQ % fore_color + levelname + self.RESET_SEQ
+            record.levelname = levelname_color
+        return logging.Formatter.format(self, record)
 
 
 ### ---------------------------------------------
@@ -197,9 +197,9 @@ def main():
     parser.add_option("-v", "--verbose", help="Be verbose.",
                       default=logging.INFO, action="store_const", const=logging.DEBUG, dest="loglevel")
 
-    # Disabling GC may speed up execution, but uses more memory.
-    parser.add_option("--disable-gc", help="Disable garbage collection.",
-                      default=False, action="store_true", dest="disable_gc")
+    # Enabling GC may save memory, but slows down computation.
+    parser.add_option("--enable-gc", help="Enable garbage collection.",
+                      default=False, action="store_true", dest="enable_gc")
 
     # This explicitly ignores hyperthreading pseudo-cores since isodist and matplotlib presumably hose the ALU.
     parser.add_option("--num-threads", help="Maximum number of children to spawn for parallelization. [Default: # of CPU cores]",
@@ -231,9 +231,9 @@ def main():
     directory_list = os.listdir(input_directory)
     if 'DTASelect-filter.txt' not in directory_list:
         parser.error("DTASelect-filter.txt not found in input directory.")
-    if not len([file for file in directory_list if file.endswith('.mzXML')]) == 1:
+    if not len([fname for fname in directory_list if fname.endswith('.mzXML')]) == 1:
         parser.error("Exactly one .mzXML file must be present in the input directory.")
-    if not len([file for file in directory_list if file.endswith('.sqt')]) >= 1:
+    if not len([fname for fname in directory_list if fname.endswith('.sqt')]) >= 1:
         parser.error(".sqt file(s) not found in input directory.")
 
 
@@ -274,13 +274,13 @@ def main():
     # Parse DTA Select results file
     dta_select_data = parse_DTASelect(input_directory.rstrip('/') + "/DTASelect-filter.txt")
 
-    if options.disable_gc:
-        log_main.info('Disabling garbage collection, since --disable-gc was passed.')
-        gc.disable()
-    else:
-        log_main.info('Garbage collection is enabled. Use --disable-gc to override.')
+    if options.enable_gc:
+        log_main.info('Garbage collection is enabled, since --enable-gc was passed.')
         if sys.hexversion < 0x02070300:
             log_main.warning('Garbage collection is EXTREMELY slow on Python < 2.7')
+    else:
+        log_main.info('Disabling garbage is disabled. Use --enable-gc to override.')
+        gc.disable()
 
     # Now that we have the isodist predicted spectra, parse the mzXML
     # TODO: Modularize these filenames better.
@@ -290,7 +290,7 @@ def main():
     # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
     peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1)
 
-    #gc.enable() # Probably OK now
+#    gc.enable() # Enable GC (if it was disabled), since the big stuff is done.
     del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
 
@@ -306,7 +306,7 @@ def main():
 
     # Why not make some matplotlib graphs?
     if options.skip_graphs:
-        log_main.warning('Skipping peak graph generation, as requested.')
+        log_main.warning('Skipping peak graph generation as requested. (Graphs may be stale.)')
     else:
         make_peak_graphs(peptide_dict, isodist_results, options.num_threads)
 
@@ -486,8 +486,8 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     Given the dta_select data, and the ms1 from the mzXML,
     try to extract representative peaks for each peptide.
     """
-    global MASS_PROTON, N15_MASS_SHIFT, AA_TO_N, MS1_WINDOW
     extract_peak_logger = logging.getLogger('extract_MS1_peaks')
+    extract_peak_logger.error('MP is: %s' % (MASS_PROTON,))
     peptide_dict = {}
     
     az_only_pattern = re.compile('[^A-Z]+')
@@ -591,22 +591,21 @@ def pick_FRC_NX(peptide_dict, isodist_results):
        If not, refuse to make an FRC_NX guess.
     """
 
-    graph_log = logging.getLogger('make_peak_graphs')
-    graph_log.info('Generating graphs. This may take a few minutes.')
+    frc_nx_log = logging.getLogger('pick_FRC_NX')
+    frc_nx_log.info('Determining optimal FRC_NX enrichment percentages.')
 
-    pool = multiprocessing.Pool(num_threads)
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
-    results = []
+    
+    frc_nx_log.info('Predictions were made for %s peptides.' % (len(tasks),))
 
-    # TODO: Mandate Python2.7 (and use error_callback?)
-    r = pool.map_async(_peak_graph_cmd, tasks, num_threads, callback=results.append)
-    r.wait() # Block until our pool returns
-    
-    if len(results[0]) != len(tasks):
-        # You could take a set intersection and see what didn't return.
-        raise FatalError('A graphing thread failed!')
-    
-    graph_log.info('Graphs generated successfully.')
+    # Loop over the tasks based on key (key: g08_L50.21917.21917.2)
+
+    for k, v, _ in tasks:
+        print k
+        print v
+        break
+
+    frc_nx_log.info('Percentages chosen successfully.')
     
     return True
 
