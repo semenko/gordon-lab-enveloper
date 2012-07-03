@@ -87,6 +87,10 @@ MS1_WINDOW = 20
 ## Config Options
 ## *****
 
+# isodist prediction range: These are the guesses we tell isodist to make regarding enrichment.
+# These MUST have corresponding res_15Nshift_XXX.txt files in the /isodist/ folder!
+N_PERCENT_RANGE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
 # In Daltons, for guessing MS1 peak range from MS2 m/z
 PEAK_SPREAD = 10
 
@@ -313,10 +317,9 @@ def main():
     # Choose winners: rank predictions and choose the best FRC_NX value
     enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
 
-    # Make HTML summary of enrichment predictions
-    #generate_HTML_summary(enrichment_predictions)
+    # Save output as CSV, maybe HTML later
+    generate_output(peptide_dict, enrichment_predictions)
 
-    # Let's cook this turkey!
     # (actually do comparisons from isodist <-> mzXML spectra)
     #turkey_cooker(mzXML_data, input_directory.rstrip('/'))
 
@@ -598,15 +601,45 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     
     frc_nx_log.info('Predictions were made for %s peptides.' % (len(tasks),))
 
-    # Loop over the tasks based on key (key: g08_L50.21917.21917.2)
+    enrichment_predictions = {}
 
-    for k, v, _ in tasks:
+    # Loop over the tasks based on key (key: g08_L50.21917.21917.2)
+    for k, v, i in tasks:
         print k
         print v
         break
 
     frc_nx_log.info('Percentages chosen successfully.')
     
+    return enrichment_predictions
+
+def generate_output(peptide_dict, enrichment_predictions):
+    """
+    Save a final output summary of our predictions. Currently write a CSV.
+    """
+
+    output_log = logging.getLogger('generate_output')
+    output_log.info('Saving CSV output as: asdasd')
+
+    # Open our CSV file
+    csv_out = csv.DictWriter(sys.stderr,
+                             ['id', 'sequence', 'charge', 'mz', 'n15mz'],
+                             extrasaction='ignore')
+
+    # Here's a header
+    csv_out.writeheader()
+
+    # Add a 'key' value to the dict for our DictWriter
+    for key in peptide_dict.iterkeys():
+        peptide_dict[key]['id'] = key
+
+    # This just extends the previous dict, and overwrites any collisions.
+    # This is not totally elegant, but it works fine.
+    peptide_dict.update(enrichment_predictions)
+
+    csv_out.writerows(peptide_dict.itervalues())
+
+    output_log.info('Output sucessfully generated.')
     return True
 
 def _peak_graph_cmd(task):
@@ -618,10 +651,7 @@ def _peak_graph_cmd(task):
     graph_thread_log = logging.getLogger('_peak_graphs_cmd')
     graph_thread_log.debug('Graphing %s' % peptide_key)
 
-    # TODO: Modularize this ASAP
-    n_percent_range = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-
-    for n_percent in n_percent_range:
+    for n_percent in N_PERCENT_RANGE:
 
         # Set up our figure
         fig = matplotlib.pyplot.figure(figsize=(12, 5))
@@ -685,8 +715,7 @@ def run_isodist(output_path, dta_select_data, peptide_dict, num_threads):
                         'gaussian_width': "0.003 variable",
                         'n_percent': 0000, } # Note: n_percent is adjusted on-the-fly below.
 
-    # These MUST have corresponding res_15Nshift_XXX.txt files in the /isodist/ folder!
-    n_percent_range = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
 
     # TODO: Remove res_15Nshift.txt above? No longer used, now generated on-the-fly.
     input_template = "fitit\nbatch/%(batchfile_name)s/%(n_percent)s.batch\nexp_atom_defs.txt\n" + \
@@ -706,7 +735,7 @@ def run_isodist(output_path, dta_select_data, peptide_dict, num_threads):
         # We need multiple copies of these files -- one pair per estimated N%.
         # TODO: Rewrite isodist to make %N guess a flag?
         try:
-            for n_percent in n_percent_range:
+            for n_percent in N_PERCENT_RANGE:
                 peaks = open('./isodist/peaks/%s/%s.tsv' % (peptide_key, n_percent), 'w')
                 batch = open('./isodist/batch/%s/%s.batch' % (peptide_key, n_percent), 'w')
                 input = open('./isodist/input/%s/%s.in' % (peptide_key, n_percent), 'w')
@@ -742,7 +771,7 @@ def run_isodist(output_path, dta_select_data, peptide_dict, num_threads):
         
         pool = multiprocessing.Pool(num_threads)
         #tasks = peptide_dict.keys()
-        tasks = [x + "/" + str(y) for x in peptide_dict.keys() for y in n_percent_range]
+        tasks = [x + "/" + str(y) for x in peptide_dict.keys() for y in N_PERCENT_RANGE]
         results = []
 
         # TODO: Mandate Python2.7 (and use error_callback?)
@@ -771,12 +800,8 @@ def read_isodist_results(input_path, peptide_dict):
     keys = ['mw', 'z', 'tim', 'chisq', 'symb', 'mz', 'b', 'off', 'gw', 'amp_u', 'amp_l', 'frc_nx']
     casts = [float, int, str, float, int, float, float, float, float, float, float, float]
     # We ran isodist on each peptide
-#    for peptide_key in peptide_dict.iterkeys():
 
-    # TODO: Modularize this ASAP
-    n_percent_range = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-
-    for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in n_percent_range]:
+    for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in N_PERCENT_RANGE]:
         # Make the [peptide_key] dict, if it doesn't exist.
         isodist_results.setdefault(peptide_key, {})
 
