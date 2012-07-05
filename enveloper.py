@@ -604,10 +604,54 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     enrichment_predictions = {}
 
     # Loop over the tasks based on key (key: g08_L50.21917.21917.2)
-    for k, v, i in tasks:
-        print k
-        print v
-        break
+    #
+    # I'm not sure what the best way to settle on a prediction is. The options include:
+    #  - Direct comparsions to raw peaks (ignoring the isodist CHI_SQ scores)
+    #  - Averaging/other statistics based on CHI_SQ or other values
+    #  - Windowing/mode selection
+    #
+    # The first option never worked great for me, so I've settled on using a windowing-type approach
+    # followed by an average. We perform the following algorithm:
+    #  1. For the 10 N_PERCENT_RANGE values [0, 10, 20 ...], take each predicted FRC_NX and ...
+    #  2. Using the current FRC_NX, see if the next FRC_NX is within 1%:
+    #    - If yes, continue until >= 5 values are within 1% of each other
+    #    - If no, move to the next FRC_NX and go back to step #2
+    #  3. If >=5 FRC_NX predictions are within 1% of each other, return their average, otherwise,
+    #    we refuse to maek an FRC_NX enrichment prediction.
+    #
+    # This may seem inelegant, but in practice, is is extremely stringent.
+    for k, _, i in tasks:
+        frc_nx_log.debug('Choosing enrichment for %s' % (k,))
+        # Set key of peptide id
+        enrichment_predictions[k] = {}
+        # Add raw FRC_NX guesses from isodist
+        enrichment_predictions[k]['raw'] = [i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]
+
+        # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% limit
+        current_window_percent = -10  # An impossible to return enrichment value.
+        enrichment_window = []
+        for percent in N_PERCENT_RANGE:
+            if (current_window_percent - .01 ) < i[percent]['frc_nx'] < (current_window_percent + .01):
+                # We're within 1% of the previous value
+                enrichment_window.append(i[percent]['frc_nx'])
+                current_window_percent = i[percent]['frc_nx']
+            elif (len(enrichment_window) >= 5):
+                # We have five or more values that are awesome. We're set. Let's get outa' here.
+                break
+            else:
+                # We're not within 1%. Clear the window. Let's hope there are more values!
+                enrichment_window = []
+                current_window_percent = i[percent]['frc_nx']
+
+        # Ok, let's see what that loop left in our enrichment window ...
+        frc_nx_log.debug('\tWindow: %s items, %s ' % (len(enrichment_window), enrichment_window))
+        frc_nx_log.debug('\tRaw: %s' % (enrichment_predictions[k]['raw']))
+        if len(enrichment_window) >= 5:
+            mean = sum(enrichment_window)/float(len(enrichment_window))
+            enrichment_predictions[k]['percent'] = mean
+            frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
+        else:
+            frc_nx_log.warn('\tPrediction failed for %s' % (k,))
 
     frc_nx_log.info('Percentages chosen successfully.')
     
@@ -622,7 +666,8 @@ def generate_output(peptide_dict, enrichment_predictions):
     output_log.info('Saving CSV output as: asdasd')
 
     # Open our CSV file
-    csv_out = csv.DictWriter(sys.stderr,
+    # Protip: Write to sys.stderr if you're debugging/recoding this.
+    csv_out = csv.DictWriter(open('tmp.csv', 'wb'),
                              ['id', 'sequence', 'charge', 'mz', 'n15mz'],
                              extrasaction='ignore')
 
