@@ -11,6 +11,7 @@
 """
 Some envelope stuff with mass spec stuff.
 """
+from __future__ import absolute_import, division, print_function # unicode_literals
 
 __author__ = 'Nick Semenkovich <semenko@alum.mit.edu> and Gabriel Simon <gabrielmsimon@gmail.com>'
 __copyright__ = 'Gordon Lab at Washington University in St. Louis / gordonlab.wustl.edu'
@@ -27,6 +28,7 @@ import gc
 import socket
 import hashlib
 import logging
+import math
 import matplotlib
 matplotlib.use('Agg')
 import multiprocessing
@@ -492,7 +494,6 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     try to extract representative peaks for each peptide.
     """
     extract_peak_logger = logging.getLogger('extract_MS1_peaks')
-    extract_peak_logger.error('MP is: %s' % (MASS_PROTON,))
     peptide_dict = {}
     
     az_only_pattern = re.compile('[^A-Z]+')
@@ -631,14 +632,24 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         for percent in N_PERCENT_RANGE:
             enrichment_predictions[k]['guess_' + str(percent)] = i[percent]['frc_nx']
 
+        # Keep some stats for std dev
+        sum_all_enrich = 0.0
+        sum_all_enrich_sq = 0.0
+        
+        sum_window_sq = 0.0
+
         # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% limit
         current_window_percent = -10  # An impossible to return enrichment value.
         enrichment_window = []
         for percent in N_PERCENT_RANGE:
+            sum_all_enrich += i[percent]['frc_nx']
+            sum_all_enrich_sq += i[percent]['frc_nx'] ** 2
+
             if (current_window_percent - .01 ) < i[percent]['frc_nx'] < (current_window_percent + .01):
                 # We're within 1% of the previous value
                 enrichment_window.append(i[percent]['frc_nx'])
                 current_window_percent = i[percent]['frc_nx']
+                sum_window_sq += i[percent]['frc_nx'] ** 2
             elif (len(enrichment_window) >= 5):
                 # We have five or more values that are awesome. We're set. Let's get outa' here.
                 break
@@ -646,16 +657,22 @@ def pick_FRC_NX(peptide_dict, isodist_results):
                 # We're not within 1%. Clear the window. Let's hope there are more values!
                 enrichment_window = []
                 current_window_percent = i[percent]['frc_nx']
+                sum_window_sq = 0.0
 
         # Ok, let's see what that loop left in our enrichment window ...
         frc_nx_log.debug('\tWindow: %s items, %s ' % (len(enrichment_window), enrichment_window))
-        frc_nx_log.debug('\tRaw: %s' % (i[percent]['frc_nx'] for percent in N_PERCENT_RANGE))
+        frc_nx_log.debug('\tRaw: %s' % ([i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
+
         if len(enrichment_window) >= 5:
             mean = sum(enrichment_window)/float(len(enrichment_window))
             enrichment_predictions[k]['percent'] = mean
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
+            frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2)))) 
         else:
+            all_mean = sum_all_enrich/float(len(N_PERCENT_RANGE))
             frc_nx_log.warn('\tPrediction failed for %s' % (k,))
+            frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
+            frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
 
     frc_nx_log.info('Percentages chosen successfully.')
     
@@ -667,7 +684,7 @@ def generate_output(peptide_dict, enrichment_predictions):
     """
 
     output_log = logging.getLogger('generate_output')
-    output_log.info('Saving CSV output as: asdasd')
+    output_log.info('Saving CSV output as: out.csv')
 
     # Prepare a dict for writing.
     # Add a 'key' value to the dict for our DictWriter
@@ -686,9 +703,8 @@ def generate_output(peptide_dict, enrichment_predictions):
         for percent in N_PERCENT_RANGE:
             output_keys.append('guess_' + str(percent))
 
-        csv_out = csv.DictWriter(sys.stderr,
-                                 output_keys,
-                                 extrasaction='ignore')
+        csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
+
         # Here's a header
         csv_out.writeheader()
         # And the contents
@@ -957,7 +973,7 @@ def parse_mzXML(mzXML_file):
 
             decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            floating_tuple = struct.unpack('>' + str(len(decoded_b64)/4) + 'f', decoded_b64) 
+            floating_tuple = struct.unpack('>' + str(len(decoded_b64)//4) + 'f', decoded_b64) 
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
