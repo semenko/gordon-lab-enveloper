@@ -31,6 +31,7 @@ import logging
 import math
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot
 import multiprocessing
 import os
 import subprocess
@@ -355,7 +356,6 @@ def pre_run_version_checks():
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     isodist_version_process.wait()
     stdout = isodist_version_process.communicate()[0]
-#    print stdout
     local_isodist_version = stdout[23:27] # Snip the isodist version string.
 
     if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
@@ -565,6 +565,9 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
 def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     """
     Make some graphs of the peaks. Now featuring parallelism!
+
+    Note: These threads take a *lot* of RAM. Like 8gb/thread.
+
     FYI: Threadsafety here is not 100% certain. This may break at high thread numbers (>=24).
       Although I think that bug was fixed in Python >=2.7.
     """
@@ -576,10 +579,14 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
     results = []
 
+    chunk_size = len(tasks)//num_threads
+    graph_log.debug('Task size is %s with %s threads' % (len(tasks), num_threads))
+    graph_log.debug('Using chunk_size of %s' % (chunk_size,))
+
     # TODO: Use error_callback?
-    r = pool.map_async(_peak_graph_cmd, tasks, num_threads, callback=results.append)
+    r = pool.map_async(_peak_graph_cmd, tasks, chunk_size, callback=results.append)
     r.wait() # Block until our pool returns
-    
+
     if len(results[0]) != len(tasks):
         # You could take a set intersection and see what didn't return.
         raise FatalError('A graphing thread failed!')
@@ -667,7 +674,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             mean = sum(enrichment_window)/float(len(enrichment_window))
             enrichment_predictions[k]['percent'] = mean
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
-            frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2)))) 
+            frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2)))) 
         else:
             all_mean = sum_all_enrich/float(len(N_PERCENT_RANGE))
             frc_nx_log.warn('\tPrediction failed for %s' % (k,))
@@ -723,7 +730,6 @@ def _peak_graph_cmd(task):
     graph_thread_log.debug('Graphing %s' % peptide_key)
 
     for n_percent in N_PERCENT_RANGE:
-
         # Set up our figure
         fig = matplotlib.pyplot.figure(figsize=(12, 5))
         fig.suptitle('%s' % (peptide_key, ))
@@ -739,6 +745,7 @@ def _peak_graph_cmd(task):
 
         # Let's also grab the metadata from isodist
         isodist_data = isodist_results[n_percent]
+
         matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %e\nAMP_U: %0.4f\nAMP_L: %0.4f" %
                                    (isodist_data['frc_nx'], isodist_data['chisq'], isodist_data['amp_u'], isodist_data['amp_l']),
             (0.85, 0.70),
@@ -813,15 +820,15 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
 
                 # Write the raw peaks -- we only need one of these files.
                 for m, z in peptide_value['peaks']:
-                    print >>peaks, "%s\t%s" % (m, z)
+                    print("%s\t%s" % (m, z), file=peaks)
 
                 # Make the .in file, which is a big, annoying template
                 isodist_settings['batchfile_name'] = peptide_key
                 isodist_settings['n_percent'] = n_percent
-                print >>isoinput, input_template % isodist_settings
+                print(input_template % isodist_settings, file=isoinput)
                 
                 # Make the batchfile
-                print >>batch, "%s %s peaks/%s/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key, n_percent)
+                print("%s %s peaks/%s/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key, n_percent), file=batch)
 
                 peaks.close()
                 batch.close()
