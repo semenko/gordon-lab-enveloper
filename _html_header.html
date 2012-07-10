@@ -1,0 +1,47 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+		<link rel="shortcut icon" type="image/ico" href="http://www.datatables.net/media/images/favicon.ico" />
+		
+		<title>enveloper.py Results</title>
+		<style type="text/css" title="currentStyle">
+			@import "demo_page.css";
+			@import "demo_table.css";
+		</style>
+		<script type="text/javascript" language="javascript" src="jquery.js"></script>
+		<script type="text/javascript" language="javascript" src="jquery.dataTables.js"></script>
+		<script type="text/javascript" charset="utf-8">
+			$(document).ready(function() {
+				$('#example').dataTable( {
+					"bPaginate": false,
+					"bLengthChange": false,
+					"bFilter": true,
+					"bSort": false,
+					"bInfo": false,
+					"bAutoWidth": false } );
+			} );
+		</script>
+	</head>
+	<body id="dt_example">
+		<div id="container">
+			<div class="full_width big">
+				enveloper.py run on XXXXXX
+			</div>
+
+			<h1>Run Statistics</h1>
+			<p>We could put overall run stats here.</p>
+			
+			<h1>Raw Results</h1>
+			<div id="demo">
+<table cellpadding="0" cellspacing="0" border="0" class="display" id="example">
+	<thead>
+		<tr>
+			<th>Peptide Key</th>
+			<th>Sequence</th>
+			<th>Charge</th>
+			<th>Engine version</th>
+			<th>CSS grade</th>
+		</tr>
+	</thead>
+	<tbody>
