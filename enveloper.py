@@ -11,12 +11,12 @@
 """
 Some envelope stuff with mass spec stuff.
 """
-from __future__ import absolute_import, division, print_function # unicode_literals
+from __future__ import absolute_import, division, print_function, with_statement # unicode_literals
 
 __author__ = 'Nick Semenkovich <semenko@alum.mit.edu> and Gabriel Simon <gabrielmsimon@gmail.com>'
 __copyright__ = 'Gordon Lab at Washington University in St. Louis / gordonlab.wustl.edu'
 __license__ = 'MIT'
-__version__ = '1.0'
+__version__ = '1.3.1'
 
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version
@@ -322,11 +322,8 @@ def main():
     # Choose winners: rank predictions and choose the best FRC_NX value
     enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
 
-    # Save output as CSV, maybe HTML later
+    # Save output as CSV & HTML.
     generate_output(peptide_dict, enrichment_predictions)
-
-    # (actually do comparisons from isodist <-> mzXML spectra)
-    #turkey_cooker(mzXML_data, input_directory.rstrip('/'))
 
     # Cleanup.
     if USE_DRMAA:
@@ -687,11 +684,14 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
 def generate_output(peptide_dict, enrichment_predictions):
     """
-    Save a final output summary of our predictions. Currently write a CSV.
+    Save a final output summary of our predictions. This outputs as CSV & HTML.
     """
 
+    out_csv_fname = 'envelope_results.csv'
+    out_html_fname = 'envelope_results.html'
+
     output_log = logging.getLogger('generate_output')
-    output_log.info('Saving CSV output as: out.csv')
+    output_log.info('Saving CSV output as: %s' % (out_csv_fname,))
 
     # Prepare a dict for writing.
     # Add a 'key' value to the dict for our DictWriter
@@ -702,22 +702,38 @@ def generate_output(peptide_dict, enrichment_predictions):
         for enrich_key, enrich_val in enrichment_predictions[key].iteritems():
             peptide_dict[key][enrich_key] = enrich_val
 
+
+    # Dictionary keys for our output results.
+    output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
+    # Add the "guess_0" -> 100 columns
+    for percent in N_PERCENT_RANGE:
+        output_keys.append('guess_' + str(percent))
+
     # Open & write our CSV file
-    # Protip: Write to sys.stderr if you're debugging/recoding this.
-    with open('out.csv', 'wb') as csvout:
-        output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
-        # Add the "guess_0" -> 100 columns
-        for percent in N_PERCENT_RANGE:
-            output_keys.append('guess_' + str(percent))
-
+    # Protip: Write to sys.stderr if you're debugging this.
+    with open(out_csv_fname, 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
-
         # Here's a header
         csv_out.writeheader()
         # And the contents
         csv_out.writerows(peptide_dict.itervalues())
+    output_log.info('CSV sucessfully generated.')
 
-    output_log.info('Output sucessfully generated.')
+
+    # Let's make some HTML, too.
+    # Note: This uses DataTables -- if the number of columns changes, the table may break.
+    #   Be sure to update the HTML headers if you change things.
+    output_log.info('Saving HTML output as: %s' % (out_html_fname,))
+    with open(out_html_fname, 'wb') as htmlout:
+        
+        print('<html><table>', file=htmlout)
+        for elt in peptide_dict.itervalues():
+            print('<tr><td>', file=htmlout)
+            print('</td><td>'.join([str(elt.get(x, '')) for x in output_keys]), file=htmlout)
+            print('</td></tr>', file=htmlout)
+    output_log.info('HTML successfully generated.')
+
+
     return True
 
 def _peak_graph_cmd(task):
@@ -768,6 +784,9 @@ def _peak_graph_cmd(task):
         ax.grid(True)
         # TODO: Sanitize peptide_key (This is dangerous!)
         matplotlib.pyplot.savefig("graphs/%s_%s.png" % (peptide_key, n_percent))
+
+        # Critically important for memory usage.
+        #fig.close()
 
     return True
 
