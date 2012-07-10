@@ -39,6 +39,7 @@ import random
 import re
 import time
 import signal
+import string
 import struct
 import sys
 
@@ -355,8 +356,8 @@ def pre_run_version_checks():
     stdout = isodist_version_process.communicate()[0]
     local_isodist_version = stdout[23:27] # Snip the isodist version string.
 
-    if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
-        raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
+#    if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
+#        raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
 
     # Note: We could clean out this directory if we wanted, but I tend to avoid sometimes dangerous rm calls.
     # Instead, we'll overwrite peak files, and if we can't, we'll raise an error.
@@ -724,7 +725,7 @@ def generate_output(peptide_dict, enrichment_predictions):
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
     output_log.info('Saving HTML output as: %s' % (out_html_fname,))
-    with open(out_html_fname, 'wb') as htmlout:
+    with open(out_html_fname, 'wb') as htmlout, open('_html_header.html', 'rb') as headers:
         
         print('<html><table>', file=htmlout)
         for elt in peptide_dict.itervalues():
@@ -744,6 +745,9 @@ def _peak_graph_cmd(task):
 
     graph_thread_log = logging.getLogger('_peak_graphs_cmd')
     graph_thread_log.debug('Graphing %s' % peptide_key)
+    
+    # Not that this app is secure, but just so we don't break things, sanitize some outputs.
+    valid_chars = "-_.()%s%s" % (string.ascii_letters, string.digits)
 
     for n_percent in N_PERCENT_RANGE:
         # Set up our figure
@@ -782,11 +786,15 @@ def _peak_graph_cmd(task):
         ax.plot(isodist_m, isodist_z, 'b-.', linewidth = 1.2)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
-        # TODO: Sanitize peptide_key (This is dangerous!)
-        matplotlib.pyplot.savefig("graphs/%s_%s.png" % (peptide_key, n_percent))
+ 
+        # Semi-sanitized. Not secure, but we aren't likely to accidentally break things if peptide_key is insane.
+        output_fname = '%s_%s' % (peptide_key, n_percent)
+        safer_output_fname = ''.join(c for c in output_fname if c in valid_chars)
+        matplotlib.pyplot.savefig("graphs/%s.png" % (safer_output_fname))
 
-        # Critically important for memory usage.
-        #fig.close()
+        # I'm not sure if this matters for memory usage.
+        # Matplotlib uses a *lot* of RAM and nothing seems to reduce it.
+        matplotlib.pyplot.close('all')
 
     return True
 
@@ -828,6 +836,7 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
             pass
 
         # We need multiple copies of these files -- one pair per estimated N%.
+        # TODO: Sanitize these values.
         try:
             for n_percent in N_PERCENT_RANGE:
                 peaks = open('./isodist/peaks/%s/%s.tsv' % (peptide_key, n_percent), 'w')
@@ -933,12 +942,19 @@ def _isodist_cmd(infile):
     # the best about catching errors in isodist execution.
     isodist_cmd_log = logging.getLogger('_isodist_cmd')
     # Is this (& the instantiation) slow?
+
+    # There's a library issue with isodist :(
+    env = dict(os.environ)
+    env['LD_LIBRARY_PATH'] = './bin/'
+
     isodist_cmd_log.debug("Running on %s" % (infile,))
     try:
         p = subprocess.Popen(['nice', 'isodist', './input/%s.in' % (infile,)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd="./isodist/")
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
+                             cwd="./isodist/",
+                             env=env,
+                             )
         stdoutdata, stderrdata = p.communicate() # This will block until isodist finishes.
     except:
         raise FatalError('isodist execution failed on %s' % (infile,))
