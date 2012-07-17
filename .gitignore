@@ -5,4 +5,7 @@
 !isodist*
 !*.in
 !*.txt
+DTASelect-filter.txt
+!_html_header.html
+!_html_footer.html
 
