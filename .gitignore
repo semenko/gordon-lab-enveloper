@@ -3,6 +3,8 @@
 !enveloper.py
 !*.py
 !isodist*
+!isodist/bin/
+!isodist/bin/*.0
 !*.in
 !*.txt
 DTASelect-filter.txt
