@@ -105,13 +105,6 @@ USE_DRMAA = False
 # Of note -- Older versions of SGE may have issues with allocating >1 core/job.
 MAX_THREADS = 1
 
-# These set paths & minimum version requirements.
-# Keeping a tool somewhere else? Try: 'bowtie2': ('/my/path/to/bowtie2', '2.0.0-beta3')
-TOOLS_AND_VERSIONS = {
-    'isodist': ('/home/comp/jglab/semenko/projects/envelope/isodist/bin/isodist_x86linux64', '2008'),
-    'other': ('tool', '1.0'),
-}
-
 ### ---------------------------------------------
 ### Exceptions & Handlers
 ### ---------------------------------------------
@@ -345,24 +338,35 @@ def pre_run_version_checks():
         raise FatalError('Outdated Python version. Please use >=2.7.3')
 
     ### Tool Checks
-    # Make sure isodist exists
-    if not len(which(TOOLS_AND_VERSIONS['isodist'][0])):
-        raise FatalError('isodist not found or not executable.')
+    # Make sure isodist exists and runs.
 
     # Check isodist version (only one 2008 version at time of writing)
-    isodist_version_process = subprocess.Popen([which(TOOLS_AND_VERSIONS['isodist'][0])],
-                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    env = dict(os.environ)
+    env['LD_LIBRARY_PATH'] = './bin/'
+
+    try:
+        isodist_version_process = subprocess.Popen(['./bin/isodist_x86linux64'],
+                                                   stdout=subprocess.PIPE,
+                                                   stderr=subprocess.PIPE,
+                                                   cwd='./isodist/',
+                                                   env=env)
+    except OSError:
+        raise FatalError('isodist not found or not executable.')
+
     isodist_version_process.wait()
     stdout = isodist_version_process.communicate()[0]
     local_isodist_version = stdout[23:27] # Snip the isodist version string.
 
-#    if not cmp(parse_version(local_isodist_version), parse_version(TOOLS_AND_VERSIONS['isodist'][1])) >= 0:
-#        raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
+    if not cmp(parse_version(local_isodist_version), parse_version('2008')) >= 0:
+        raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
 
-    # Note: We could clean out this directory if we wanted, but I tend to avoid sometimes dangerous rm calls.
-    # Instead, we'll overwrite peak files, and if we can't, we'll raise an error.
-    if not os.access("./isodist/peaks/", os.W_OK):
-        raise FatalError('Unable to write peaks to isodist directory. Make sure it is writeable.')
+    # Make an isodist intermediate file directories
+    for dirname in ['peaks', 'batch', 'input']:
+        try:
+            os.mkdir('./isodist/%s' % (dirname,))
+        except OSError:
+            if not os.access("./isodist/%s" % (dirname,), os.W_OK):
+                raise FatalError('Unable to write to ./isodist/%s -- Make sure it exists and is writeable.' % (dirname,))
 
     # We shipped with two config files: exp_atom_defs.txt and res_15Nshift_XXX.txt.
     # The third required file (15Nshift_XXX.in) is dynamically generated.
@@ -827,13 +831,12 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
 
     isodist_log.info('Creating isodist input files in ./isodist/')
     for peptide_key, peptide_value in peptide_dict.iteritems():
-        try:
-            os.mkdir('./isodist/peaks/%s' % (peptide_key,))
-            os.mkdir('./isodist/batch/%s' % (peptide_key,))
-            os.mkdir('./isodist/input/%s' % (peptide_key,))
-        except OSError:
-            # Dir already exists. If it's unwriteable, we'll FATAL it below.
-            pass
+        for dirname in ['peaks', 'batch', 'input']:
+            try:
+                os.mkdir('./isodist/%s/%s' % (dirname, peptide_key))
+            except OSError:
+                # Dir might already exist. If it's unwriteable, we'll FATAL it below.
+                pass
 
         # We need multiple copies of these files -- one pair per estimated N%.
         # TODO: Sanitize these values.
@@ -949,10 +952,10 @@ def _isodist_cmd(infile):
 
     isodist_cmd_log.debug("Running on %s" % (infile,))
     try:
-        p = subprocess.Popen(['nice', 'isodist', './input/%s.in' % (infile,)],
+        p = subprocess.Popen(['nice', './bin/isodist_x86linux64', './input/%s.in' % (infile,)],
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE,
-                             cwd="./isodist/",
+                             cwd='./isodist/',
                              env=env,
                              )
         stdoutdata, stderrdata = p.communicate() # This will block until isodist finishes.
@@ -1028,30 +1031,6 @@ def parse_mzXML(mzXML_file):
 
     return ms1, ms2_to_ms1
 
-
-
-# Very annoying that Python doesn't have a `which` equivalent. I avoid calling sys(which), since,
-# well, you /could/ run this on Windows. :/
-# Adapted from: http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
-def which(program):
-    """
-    Same as system 'which' command
-    """
-    def is_exe(fpath):
-        """ T/F is executable. """
-        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
-
-    fpath, _ = os.path.split(program)
-    if fpath:
-        if is_exe(program):
-            return program
-    else:
-        for path in os.environ["PATH"].split(os.pathsep):
-            exe_file = os.path.join(path, program)
-            if is_exe(exe_file):
-                return exe_file
-
-    return None
 
 def deploy_drmaa_job(job_command, job_parameters):
     """
