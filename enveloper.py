@@ -577,6 +577,16 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This may take a few minutes.')
 
+    graph_log.debug('Making output directories in /graphs/.')
+    # Let's create output directories for graphs
+    for peptide_key in peptide_dict.iterkeys():
+        try:
+            # Makedirs will make the parent /graphs/ if it doesn't exist.
+            os.makedirs('./graphs/%s' % (peptide_key))
+        except OSError:
+            # Dir might already exist. If it's unwriteable, we'll FATAL it later.
+            pass
+
     pool = multiprocessing.Pool(num_threads)
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
     results = []
@@ -589,10 +599,13 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     r = pool.map_async(_peak_graph_cmd, tasks, chunk_size, callback=results.append)
     r.wait() # Block until our pool returns
 
-    if len(results[0]) != len(tasks):
-        # You could take a set intersection and see what didn't return.
-        raise FatalError('A graphing thread failed!')
-    
+    try:
+        if len(results[0]) != len(tasks):
+            # You could take a set intersection and see what didn't return.
+            raise FatalError('A graphing thread failed!')
+    except IndexError:
+        raise FatalError('A graphing thread failed: Make sure the ./graphs/ output directories are writeable.')
+ 
     graph_log.info('Graphs generated successfully.')
     
     return True
@@ -790,11 +803,11 @@ def _peak_graph_cmd(task):
         ax.plot(isodist_m, isodist_z, 'b-.', linewidth = 1.2)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
- 
+
         # Semi-sanitized. Not secure, but we aren't likely to accidentally break things if peptide_key is insane.
-        output_fname = '%s_%s' % (peptide_key, n_percent)
-        safer_output_fname = ''.join(c for c in output_fname if c in valid_chars)
-        matplotlib.pyplot.savefig("graphs/%s.png" % (safer_output_fname))
+        safer_key = ''.join(c for c in peptide_key if c in valid_chars)
+
+        matplotlib.pyplot.savefig("graphs/%s/%s.png" % (safer_key, n_percent))
 
         # I'm not sure if this matters for memory usage.
         # Matplotlib uses a *lot* of RAM and nothing seems to reduce it.
