@@ -153,7 +153,7 @@ class ColorFormatter(logging.Formatter):
     
     COLORS = {
         'WARNING': YELLOW,
-        'INFO': WHITE,
+        'INFO': GREEN,
         'DEBUG': BLUE,
         'CRITICAL': YELLOW,
         'ERROR': RED
@@ -256,6 +256,9 @@ def main():
 
     log_main = logging.getLogger('main')
     
+    log_main.info('Welcome to enveloper.py!')
+    log_main.info('Written by %s' % (__author__,))
+    log_main.info('Developed for the %s' % (__copyright__,))
     log_main.info('Logging to %s' % logfile)
 
     # I hate mid-program imports like this...
@@ -387,7 +390,7 @@ def pre_run_version_checks():
             log_prerun.warn('isodist input file has been modified: %s' % (fname,))
 
 
-    log_prerun.info('Version checks passed.')
+    log_prerun.debug('Version checks passed.')
     return True
 
 
@@ -483,7 +486,7 @@ def parse_DTASelect(DTASelect_file):
             # The header is 13 elements and starts with "Unique"
             if len(line) == 13 and line[0] == "Unique":
                 past_header = True
-                parse_dta_log.info('Found data stream in DTA Select file')
+                parse_dta_log.debug('Found data stream in DTA Select file')
 
 
     parse_dta_log.info('Finished parsing')
