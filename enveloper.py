@@ -241,8 +241,8 @@ def main():
     # Let's set up a logging system
     # We log DEBUG and higher to log file, and write INFO and higher to console.
     datestamp = datetime.datetime.now().strftime("%m%d-%H%M")
-    logfile = datestamp + '.' + socket.gethostname().split('.')[0] + '.log'
-    logging.basicConfig(filename = logfile, filemode = 'w',
+    logfilename = datestamp + '.' + socket.gethostname().split('.')[0]
+    logging.basicConfig(filename = logfilename + '.log', filemode = 'w',
                         format = '%(asctime)s: %(name)-25s: %(levelname)-8s: %(message)s',
                         level = logging.DEBUG)
 
@@ -259,7 +259,7 @@ def main():
     log_main.info('Welcome to enveloper.py!')
     log_main.info('Written by %s' % (__author__,))
     log_main.info('Developed for the %s' % (__copyright__,))
-    log_main.info('Logging to %s' % logfile)
+    log_main.info('Logging to %s' % (logfilename + '.log',))
 
     # I hate mid-program imports like this...
     if USE_DRMAA:
@@ -320,7 +320,7 @@ def main():
     enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
 
     # Save output as CSV & HTML.
-    generate_output(peptide_dict, enrichment_predictions)
+    generate_output(peptide_dict, enrichment_predictions, logfilename)
 
     # Cleanup.
     if USE_DRMAA:
@@ -703,16 +703,23 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     
     return enrichment_predictions
 
-def generate_output(peptide_dict, enrichment_predictions):
+def generate_output(peptide_dict, enrichment_predictions, logfilename):
     """
     Save a final output summary of our predictions. This outputs as CSV & HTML.
     """
 
-    out_csv_fname = 'envelope_results.csv'
-    out_html_fname = 'envelope_results.html'
+    out_csv_fname = 'results/%s/%s' % (logfilename, 'envelope_results.csv')
+    out_html_fname = 'results/%s/%s' % (logfilename, 'envelope_results.html')
 
     output_log = logging.getLogger('generate_output')
-    output_log.info('Saving CSV output as: %s' % (out_csv_fname,))
+    output_log.info('Saving CSV output as: results/%s' % (out_csv_fname,))
+
+    # Make a results directory
+    try:
+        os.mkdir('./results/%s' % (logfilename,))
+    except OSError:
+        pass
+
 
     # Prepare a dict for writing.
     # Add a 'key' value to the dict for our DictWriter
