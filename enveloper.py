@@ -745,7 +745,7 @@ def generate_output(peptide_dict, enrichment_predictions):
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
     output_log.info('Saving HTML output as: %s' % (out_html_fname,))
-    with open(out_html_fname, 'wb') as htmlout, open('_html_header.html', 'rb') as headers, open('_html_footer.html', 'rb') as footers:
+    with open(out_html_fname, 'wb') as htmlout, open('.html/_html_header.html', 'rb') as headers, open('.html/_html_footer.html', 'rb') as footers:
         htmlout.writelines(headers.readlines())
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
