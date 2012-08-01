@@ -21,6 +21,7 @@ __version__ = '1.3.1'
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version
 from xml.etree import ElementTree
+import array
 import base64
 import csv
 import datetime
@@ -92,6 +93,9 @@ MS1_WINDOW = 20
 
 # isodist prediction range: These are the guesses we tell isodist to make regarding enrichment.
 # These MUST have corresponding res_15Nshift_XXX.txt files in the /isodist/ folder!
+#
+# Node: You can add or remove values here, but execution (especially graph generation & parsing
+# of fit files) will slow down substantially.
 N_PERCENT_RANGE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
 # In Daltons, for guessing MS1 peak range from MS2 m/z
@@ -307,7 +311,7 @@ def main():
 
     # Let's read those isodist results! WHOOO
     itime = time.time()
-    isodist_results = read_isodist_results('./isodist/', peptide_dict)
+    isodist_results = read_isodist_results('./isodist/', peptide_dict, options.skip_graphs)
     log_main.info("reading isodist results took: %0.2f secs." % (time.time() - itime))
 
     # Why not make some matplotlib graphs?
@@ -318,6 +322,8 @@ def main():
 
     # Choose winners: rank predictions and choose the best FRC_NX value
     enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
+
+    del isodist_results # This is huge.
 
     # Save output as CSV & HTML.
     generate_output(peptide_dict, enrichment_predictions, logfilename)
@@ -805,10 +811,10 @@ def _peak_graph_cmd(task):
         m, z = zip(*peptide_value['peaks'])
         ax.plot(m, z, 'r-', linewidth = 0.5)
 
-        # Let's drop all pairs with intensity <=0, as they mess w/ the graph
-        filtered_peak_data = [(m/float(peptide_value['charge']), z) for m, z in isodist_data['peak_fit'] if z > 0]
-        # pylint: disable=W0142
-        isodist_m, isodist_z = zip(*filtered_peak_data)
+        # Get the m/z data.
+        # Note: These are pre-filtered to exclude all pairs with intensity <=0, as they mess w/ the graph.
+        isodist_m = [m/float(peptide_value['charge']) for m in isodist_data['peak_fit'][0]]
+        isodist_z = isodist_data['peak_fit'][1]
 
         ax.plot(isodist_m, isodist_z, 'b-.', linewidth = 1.2)
         #ax.autoscale_view() # I really don't know what this does.
@@ -915,7 +921,7 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
     return True
 
 
-def read_isodist_results(input_path, peptide_dict):
+def read_isodist_results(input_path, peptide_dict, skip_graphs):
     """
     Open our raw isodist results files and parse their delightful results.
 
@@ -932,26 +938,39 @@ def read_isodist_results(input_path, peptide_dict):
     casts = [float, int, str, float, int, float, float, float, float, float, float, float]
     # We ran isodist on each peptide
 
+    read_logger.debug('Reading %s percent values over %s keys.' % (len(N_PERCENT_RANGE), len(peptide_dict)))
+    progress = 0
+    total = len(N_PERCENT_RANGE)*len(peptide_dict)
+
     for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in N_PERCENT_RANGE]:
+        progress +=1
+        read_logger.debug('%0.2f%% complete. On key: %s, %s%%' % (progress/total, peptide_key, n_percent))
+
         # Make the [peptide_key] dict, if it doesn't exist.
         isodist_results.setdefault(peptide_key, {})
 
         isodist_results[peptide_key][n_percent] = {}
 
-        # TODO: Change this to a directory tree.
+        # TODO: Change this to a directory tree?
         with open(input_path + 'batch/' + peptide_key + '/' + str(n_percent) + '.batch.csv', 'rb') as stats:
             statline = stats.readlines()[1]
             # This is parsing the .batch.csv metadata results.
             for key, value, cast in zip(keys, statline.split(',')[3:], casts):
                 isodist_results[peptide_key][n_percent][key] = cast(value)
 
+        # If we're skipping graphing, we don't need the enormous peak_fit data.
+        # NOTE: This is VERY SLOW. Sorry.
+        if not skip_graphs:
+            # Now let's get the raw peak fit data, and add it to the dict, too!
+            with open(input_path + 'peaks/' + peptide_key + '/' + str(n_percent) + '.fit', 'rb') as fit_file:
+                peak_fit = csv.reader(fit_file, quoting=csv.QUOTE_NONNUMERIC) # Pre-cast to float
+                # Note: We filter to intensity > 0, otherwise the graphs look strange.
+                m, z = zip(*[(m, z) for m, z in peak_fit if z > 0])
+                filtered_peaks_m = array.array('f', m)
+                filtered_peaks_z = array.array('f', z)
 
-        # Now let's get the raw peak fit data, and add it to the dict, too!
-        with open(input_path + 'peaks/' + peptide_key + '/' + str(n_percent) + '.fit', 'rb') as fit_file:
-            peak_fit = csv.reader(fit_file)
-            fitted_peaks = [(float(mass), float(intensity)) for mass, intensity in peak_fit]
+            isodist_results[peptide_key][n_percent]['peak_fit'] = (filtered_peaks_m, filtered_peaks_z)
 
-        isodist_results[peptide_key][n_percent]['peak_fit'] = fitted_peaks
 
     read_logger.info('isodist results loaded successfully.')
 
