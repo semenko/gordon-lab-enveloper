@@ -584,7 +584,7 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     """
 
     graph_log = logging.getLogger('make_peak_graphs')
-    graph_log.info('Generating graphs. This may take a few minutes.')
+    graph_log.info('Generating graphs. This will take some time.')
 
     graph_log.debug('Making output directories in /graphs/.')
     # Let's create output directories for graphs
@@ -698,7 +698,10 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             mean = sum(enrichment_window)/float(len(enrichment_window))
             enrichment_predictions[k]['percent'] = mean
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
-            frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2)))) 
+            try:
+                frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2))))
+            except ValueError:
+                frc_nx_log.warn('\tOdd math error.')
         else:
             all_mean = sum_all_enrich/float(len(N_PERCENT_RANGE))
             frc_nx_log.warn('\tPrediction failed for %s' % (k,))
@@ -928,7 +931,7 @@ def read_isodist_results(input_path, peptide_dict, skip_graphs):
     I've tried to speed this up as much as possible, but the peak .fit files simply take a while to read.
     """
     read_logger = logging.getLogger('read_isodist_results')
-    read_logger.info('Reading isodist results. This will take a few minutes.')
+    read_logger.info('Reading isodist results. This will be slow if you are generating graphs.')
 
     # Save our results in a dict
     isodist_results = {}
