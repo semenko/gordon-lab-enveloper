@@ -649,12 +649,13 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     # followed by an average. We perform the following algorithm:
     #  1. For the 10 N_PERCENT_RANGE values [0, 10, 20 ...], take each predicted FRC_NX and ...
     #  2. Using the current FRC_NX, see if the next FRC_NX is within 1%:
-    #    - If yes, continue until >= 5 values are within 1% of each other
+    #    - If yes, continue until >= 4 values are within 1% of each other
     #    - If no, move to the next FRC_NX and go back to step #2
-    #  3. If >=5 FRC_NX predictions are within 1% of each other, return their average, otherwise,
+    #  3. If >=4 FRC_NX predictions are within 1% of each other, return their average, otherwise,
     #    we refuse to maek an FRC_NX enrichment prediction.
     #
     # This may seem inelegant, but in practice, is is extremely stringent.
+    fail_count = 0
     for k, _, i in tasks:
         frc_nx_log.debug('Choosing enrichment for %s' % (k,))
         # Set key of peptide id
@@ -694,20 +695,23 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         frc_nx_log.debug('\tWindow: %s items, %s ' % (len(enrichment_window), enrichment_window))
         frc_nx_log.debug('\tRaw: %s' % ([i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
-        if len(enrichment_window) >= 5:
+        if len(enrichment_window) >= 4:
             mean = sum(enrichment_window)/float(len(enrichment_window))
             enrichment_predictions[k]['percent'] = mean
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
             try:
                 frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2))))
             except ValueError:
-                frc_nx_log.warn('\tOdd math error.')
+                frc_nx_log.warn('\tMath domain error. Ignored.')
         else:
             all_mean = sum_all_enrich/float(len(N_PERCENT_RANGE))
             frc_nx_log.warn('\tPrediction failed for %s' % (k,))
+            fail_count += 1
             frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
             frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
 
+    frc_nx_log.info('Prediction failed for %s out of %s values (%0.2f%%)' % (fail_count, len(tasks)*len(N_PERCENT_RANGE),
+                                                                             fail_count/(len(tasks)+len(N_PERCENT_RANGE))))
     frc_nx_log.info('Percentages chosen successfully.')
     
     return enrichment_predictions
