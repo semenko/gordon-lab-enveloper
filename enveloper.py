@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# 
+#
 # Copyright (c) 2011, 2012 Nick Semenkovich <semenko@alum.mit.edu> / WUSTL
-# 
+#
 # Developed for the Gordon Lab, Washington University in St. Louis (WUSTL)
 # http://gordonlab.wustl.edu/
 #
-# This software is released under the MIT License <http://www.opensource.org/licenses/mit-license.php>
+# This software is released under the MIT License:
+#  <http://www.opensource.org/licenses/mit-license.php>
 #
 """
-Some envelope stuff with mass spec stuff.
+Perform MS enrichment predictions on large datasets.
 """
-from __future__ import absolute_import, division, print_function, with_statement # unicode_literals
+from __future__ import absolute_import, division, print_function, with_statement
 
 __author__ = 'Nick Semenkovich <semenko@alum.mit.edu> and Gabriel Simon <gabrielmsimon@gmail.com>'
 __copyright__ = 'Gordon Lab at Washington University in St. Louis / gordonlab.wustl.edu'
@@ -109,15 +110,18 @@ USE_DRMAA = False
 # Of note -- Older versions of SGE may have issues with allocating >1 core/job.
 MAX_THREADS = 1
 
+
 ### ---------------------------------------------
 ### Exceptions & Handlers
 ### ---------------------------------------------
+
 
 def handle_SIGINT(signal, frame):
     """
     Caught a SIGINT / user pressed Ctrl-C
     """
     raise FatalError('User abort: Caught SIGINT')
+
 
 class FatalError(Exception):
     """ Thrown when we should die. """
@@ -139,6 +143,7 @@ class FatalError(Exception):
         print('Terminating ...')
         sys.exit(1)
 
+
 class ColorFormatter(logging.Formatter):
     """
     Colorize the logger class
@@ -147,23 +152,21 @@ class ColorFormatter(logging.Formatter):
     FORMAT = ("$BOLD%(name)-25s$RESET: %(levelname)-20s: "
               "%(message)-100s "
               "($BOLD%(filename)s$RESET:%(lineno)d)")
-    
-    #noinspection PyTupleAssignmentBalance
+
     BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
-    
+
     RESET_SEQ = "\033[0m"
     COLOR_SEQ = "\033[1;%dm"
     BOLD_SEQ = "\033[1m"
-    
-    COLORS = {
-        'WARNING': YELLOW,
-        'INFO': GREEN,
-        'DEBUG': BLUE,
-        'CRITICAL': YELLOW,
-        'ERROR': RED
-        }
-    
-    def formatter_msg(self, msg, use_color = True):
+
+    COLORS = {'WARNING': YELLOW,
+              'INFO': GREEN,
+              'DEBUG': BLUE,
+              'CRITICAL': YELLOW,
+              'ERROR': RED,
+              }
+
+    def formatter_msg(self, msg, use_color=True):
         """ Return a warning-based colorized message. """
         if use_color:
             msg = msg.replace("$RESET", self.RESET_SEQ).replace("$BOLD", self.BOLD_SEQ)
@@ -212,9 +215,9 @@ def main():
 
     group = OptionGroup(parser, "Skip Sections (optional)")
     group.add_option("--skip-isodist", help="Do not run isodist. (Isodist results must already exist.)",
-                      default=False, action="store_true", dest="skip_isodist")
+                     default=False, action="store_true", dest="skip_isodist")
     group.add_option("--skip-graphs", help="Do not generate graphs.",
-                      default=False, action="store_true", dest="skip_graphs")
+                     default=False, action="store_true", dest="skip_graphs")
     parser.add_option_group(group)
 
     # Parse the input and check.
@@ -241,14 +244,13 @@ def main():
     if not len([fname for fname in directory_list if fname.endswith('.sqt')]) >= 1:
         parser.error(".sqt file(s) not found in input directory.")
 
-
     # Let's set up a logging system
     # We log DEBUG and higher to log file, and write INFO and higher to console.
     datestamp = datetime.datetime.now().strftime("%m%d-%H%M")
     logfilename = datestamp + '.' + socket.gethostname().split('.')[0]
-    logging.basicConfig(filename = logfilename + '.log', filemode = 'w',
-                        format = '%(asctime)s: %(name)-25s: %(levelname)-8s: %(message)s',
-                        level = logging.DEBUG)
+    logging.basicConfig(filename=logfilename + '.log', filemode='w',
+                        format='%(asctime)s: %(name)-25s: %(levelname)-8s: %(message)s',
+                        level=logging.DEBUG)
 
     # Define a Handler which writes INFO messages or higher to the sys.stderr
     console = logging.StreamHandler()
@@ -259,7 +261,7 @@ def main():
     logging.getLogger('').addHandler(console)
 
     log_main = logging.getLogger('main')
-    
+
     log_main.info('Welcome to enveloper.py!')
     log_main.info('Written by %s' % (__author__,))
     log_main.info('Developed for the %s' % (__copyright__,))
@@ -277,7 +279,6 @@ def main():
     # Check the version numbers, etc.
     pre_run_version_checks()
 
-    
     ###### More application-specific functions
     # Parse DTA Select results file
     dta_select_data = parse_DTASelect(input_directory.rstrip('/') + "/DTASelect-filter.txt")
@@ -299,15 +300,14 @@ def main():
     peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1)
 
     log_main.debug('Enabling GC and marking ms1_data for deletion.')
-    gc.enable() # Enable GC (if it was disabled), since the big stuff is done.
-    del ms1_data # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
+    gc.enable()   # Enable GC (if it was disabled), since the big stuff is done.
+    del ms1_data  # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
 
     # Run isodist unless we're told to skip it. This can be slow.
     if options.skip_isodist:
         log_main.warning('Skipping isodist as requested. Assuming results already exist (may be stale).')
     else:
         run_isodist(dta_select_data, peptide_dict, options.num_threads)
-
 
     # Let's read those isodist results! WHOOO
     itime = time.time()
@@ -323,7 +323,7 @@ def main():
     # Choose winners: rank predictions and choose the best FRC_NX value
     enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
 
-    del isodist_results # This is huge.
+    del isodist_results  # This is huge.
 
     # Save output as CSV & HTML.
     generate_output(peptide_dict, enrichment_predictions, logfilename)
@@ -364,10 +364,10 @@ def pre_run_version_checks():
 
     isodist_version_process.wait()
     stdout = isodist_version_process.communicate()[0]
-    local_isodist_version = stdout[23:27] # Snip the isodist version string.
+    local_isodist_version = stdout[23:27]  # Snip the isodist version string.
 
     if not cmp(parse_version(local_isodist_version), parse_version('2008')) >= 0:
-        raise FatalError('isodist is outdated. Please use a version >= %s' % TOOLS_AND_VERSIONS['isodist'][1])
+        raise FatalError('isodist is outdated. Please use a version >= 2008')
 
     # Make an isodist intermediate file directories
     for dirname in ['peaks', 'batch', 'input']:
@@ -381,11 +381,11 @@ def pre_run_version_checks():
     # The third required file (15Nshift_XXX.in) is dynamically generated.
     # Make sure they're unmodified, or warn users they've changed.
     isodist_files = [('./isodist/exp_atom_defs.txt', 'bbd69fd559741d93f0856ad6b9d7f8e8'),
-                    ('./isodist/res_15Nshift_0.txt', 'c122efa100c61910dcfa7452415576c3'),
-                    ('./isodist/res_15Nshift_20.txt', '6eabe6529ae1c972b6828065d34e3c99'),
-                    ('./isodist/res_15Nshift_50.txt', '14e4ea1dac481dc4db1ba0a603376d74'),
-                    ('./isodist/res_15Nshift_80.txt', 'c139deac216d13b6bf90f0041837fe1b'),
-                    ('./isodist/res_15Nshift_100.txt', '67d4750db22afac837208bbc2c5a7da7'), ]
+                     ('./isodist/res_15Nshift_0.txt', 'c122efa100c61910dcfa7452415576c3'),
+                     ('./isodist/res_15Nshift_20.txt', '6eabe6529ae1c972b6828065d34e3c99'),
+                     ('./isodist/res_15Nshift_50.txt', '14e4ea1dac481dc4db1ba0a603376d74'),
+                     ('./isodist/res_15Nshift_80.txt', 'c139deac216d13b6bf90f0041837fe1b'),
+                     ('./isodist/res_15Nshift_100.txt', '67d4750db22afac837208bbc2c5a7da7'), ]
     isodist_observed_hashes = [hashlib.md5(file(fname).read()).hexdigest() for fname, _ in isodist_files]
 
     for input_file_pair, observed_hash in zip(isodist_files, isodist_observed_hashes):
@@ -394,7 +394,6 @@ def pre_run_version_checks():
             # Are you seeing this error?
             # That's OK if you modified the input files. Otherwise, the are corrupt.
             log_prerun.warn('isodist input file has been modified: %s' % (fname,))
-
 
     log_prerun.debug('Version checks passed.')
     return True
@@ -415,7 +414,7 @@ def parse_DTASelect(DTASelect_file):
     #      meta:
     dta_dict = {}
 
-    dta_select_csv = csv.reader(open(DTASelect_file, 'rb'), delimiter = '\t')
+    dta_select_csv = csv.reader(open(DTASelect_file, 'rb'), delimiter='\t')
 
     # Temporary parsing variables
     past_header = False
@@ -454,7 +453,6 @@ def parse_DTASelect(DTASelect_file):
                 types = [int, int, str, int, int, float, str, str]
                 for key, value, cast in zip(keys, line[1:], types):
                     metadata_dict[key] = cast(value)
- 
 
             elif len(line) == 13:
                 # Length 13 lines are peptide data, which we add to a protein entry.
@@ -467,7 +465,7 @@ def parse_DTASelect(DTASelect_file):
                 # ['Unique', 'FileName', 'XCorr', 'DeltCN', 'Conf%', 'M+H+', 'CalcM+H+', 'TotalIntensity', 'SpR', 'Prob Score', 'IonProportion', 'Redundancy', 'Sequence']
                 # TODO: Restructure this for performance. This is extremely un-Pythonic.
                 peptide_key = line[1]
-                del line[1] # This is not friendly.
+                del line[1]  # This is not friendly.
 
                 # Don't think this is possible, but let's be paranoid.
                 if peptide_key in peptide_dict:
@@ -486,7 +484,7 @@ def parse_DTASelect(DTASelect_file):
                 break
             else:
                 raise FatalError('Odd structure in DTA Select file!')
-                
+
         # We aren't entirely though the header yet.
         else:
             # The header is 13 elements and starts with "Unique"
@@ -494,10 +492,10 @@ def parse_DTASelect(DTASelect_file):
                 past_header = True
                 parse_dta_log.debug('Found data stream in DTA Select file')
 
-
     parse_dta_log.info('Finished parsing')
 
     return dta_dict
+
 
 def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     """
@@ -506,11 +504,11 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     """
     extract_peak_logger = logging.getLogger('extract_MS1_peaks')
     peptide_dict = {}
-    
+
     az_only_pattern = re.compile('[^A-Z]+')
 
     # Calculate some charge distributions
-    charge_dist = [0]*6
+    charge_dist = [0] * 6
 
     # We don't need the protein key, yet. Maybe in a future version.
     # pylint: disable=W0612
@@ -538,7 +536,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
             else:
                 extract_peak_logger.warning('Charge of %s seen in MS2 scan %s' % (charge, scan_start))
 
-            calc_mh = peptide_data['calc_mh'] # This is the +1 state from the DTASelect file
+            calc_mh = peptide_data['calc_mh']  # This is the +1 state from the DTASelect file
             # Strip protease cleavage sites and non-[A-Z] characters from the sequence
             peptide_sequence = az_only_pattern.sub('', peptide_data['sequence'][2:-2])
             calc_mz = (calc_mh + ((charge - 1) * MASS_PROTON)) / charge
@@ -558,8 +556,8 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
 
             # Take from w/i our range
             extracted_ms1 = [(m, z) for m, z
-                                    in mz_from_parent
-                                    if (calc_mz - MS1_WINDOW/2.0) < m < (n15_adjusted_mass + MS1_WINDOW/2.0)]
+                             in mz_from_parent
+                             if (calc_mz - (MS1_WINDOW / 2.0)) < m < (n15_adjusted_mass + (MS1_WINDOW / 2.0))]
 
             peptide_dict[peptide_key] = {'sequence': peptide_sequence,
                                          'mz': calc_mz,
@@ -572,6 +570,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
         extract_peak_logger.info('\t%s: %0.2f%%' % (index, (item / float(sum(charge_dist)) * 100)))
 
     return peptide_dict
+
 
 def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     """
@@ -600,13 +599,13 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
     results = []
 
-    chunk_size = len(tasks)//num_threads
+    chunk_size = len(tasks) // num_threads
     graph_log.debug('Task size is %s with %s threads' % (len(tasks), num_threads))
     graph_log.debug('Using chunk_size of %s' % (chunk_size,))
 
     # TODO: Use error_callback?
     r = pool.map_async(_peak_graph_cmd, tasks, chunk_size, callback=results.append)
-    r.wait() # Block until our pool returns
+    r.wait()  # Block until our pool returns
 
     try:
         if len(results[0]) != len(tasks):
@@ -614,10 +613,11 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
             raise FatalError('A graphing thread failed!')
     except IndexError:
         raise FatalError('A graphing thread failed: Make sure the ./graphs/ output directories are writeable.')
- 
+
     graph_log.info('Graphs generated successfully.')
-    
+
     return True
+
 
 def pick_FRC_NX(peptide_dict, isodist_results):
     """
@@ -633,7 +633,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     frc_nx_log.info('Determining optimal FRC_NX enrichment percentages.')
 
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
-    
+
     frc_nx_log.info('Predictions were made for %s peptides.' % (len(tasks),))
 
     enrichment_predictions = {}
@@ -667,7 +667,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         # Keep some stats for std dev
         sum_all_enrich = 0.0
         sum_all_enrich_sq = 0.0
-        
+
         sum_window_sq = 0.0
 
         # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% limit
@@ -677,7 +677,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             sum_all_enrich += i[percent]['frc_nx']
             sum_all_enrich_sq += i[percent]['frc_nx'] ** 2
 
-            if (current_window_percent - .01 ) < i[percent]['frc_nx'] < (current_window_percent + .01):
+            if (current_window_percent - .01) < i[percent]['frc_nx'] < (current_window_percent + .01):
                 # We're within 1% of the previous value
                 enrichment_window.append(i[percent]['frc_nx'])
                 current_window_percent = i[percent]['frc_nx']
@@ -696,7 +696,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         frc_nx_log.debug('\tRaw: %s' % ([i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
         if len(enrichment_window) >= 4:
-            mean = sum(enrichment_window)/float(len(enrichment_window))
+            mean = sum(enrichment_window) / float(len(enrichment_window))
             enrichment_predictions[k]['percent'] = mean
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
             try:
@@ -704,17 +704,19 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             except ValueError:
                 frc_nx_log.warn('\tMath domain error. Ignored.')
         else:
-            all_mean = sum_all_enrich/float(len(N_PERCENT_RANGE))
+            all_mean = sum_all_enrich / float(len(N_PERCENT_RANGE))
             frc_nx_log.warn('\tPrediction failed for %s' % (k,))
             fail_count += 1
             frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
             frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
 
-    frc_nx_log.info('Prediction failed for %s out of %s values (%0.2f%%)' % (fail_count, len(tasks)*len(N_PERCENT_RANGE),
-                                                                             fail_count/(len(tasks)+len(N_PERCENT_RANGE))))
+    frc_nx_log.info('Prediction failed for %s out of %s values (%0.2f%%)' %
+                    (fail_count, len(tasks) * len(N_PERCENT_RANGE),
+                     fail_count / (len(tasks) + len(N_PERCENT_RANGE))))
     frc_nx_log.info('Percentages chosen successfully.')
-    
+
     return enrichment_predictions
+
 
 def generate_output(peptide_dict, enrichment_predictions, logfilename):
     """
@@ -733,7 +735,6 @@ def generate_output(peptide_dict, enrichment_predictions, logfilename):
     except OSError:
         pass
 
-
     # Prepare a dict for writing.
     # Add a 'key' value to the dict for our DictWriter
     for key in peptide_dict.iterkeys():
@@ -742,7 +743,6 @@ def generate_output(peptide_dict, enrichment_predictions, logfilename):
         # Merge in any of the enrichment_predictions, overwrite collisions (!)
         for enrich_key, enrich_val in enrichment_predictions[key].iteritems():
             peptide_dict[key][enrich_key] = enrich_val
-
 
     # Dictionary keys for our output results.
     output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
@@ -760,7 +760,6 @@ def generate_output(peptide_dict, enrichment_predictions, logfilename):
         csv_out.writerows(peptide_dict.itervalues())
     output_log.info('CSV sucessfully generated.')
 
-
     # Let's make some HTML, too.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
@@ -774,8 +773,8 @@ def generate_output(peptide_dict, enrichment_predictions, logfilename):
         htmlout.writelines(footers.readlines())
     output_log.info('HTML successfully generated.')
 
-
     return True
+
 
 def _peak_graph_cmd(task):
     """
@@ -785,7 +784,7 @@ def _peak_graph_cmd(task):
 
     graph_thread_log = logging.getLogger('_peak_graphs_cmd')
     graph_thread_log.debug('Graphing %s' % peptide_key)
-    
+
     # Not that this app is secure, but just so we don't break things, sanitize some outputs.
     valid_chars = "-_.()%s%s" % (string.ascii_letters, string.digits)
 
@@ -799,31 +798,31 @@ def _peak_graph_cmd(task):
         # Add some metadata in a box
         matplotlib.pyplot.annotate("Seq: %s\nMZ: %0.4f\n15N MZ: %0.4f" %
                                    (peptide_value['sequence'], peptide_value['mz'], peptide_value['n15mz']),
-            (0.85, 0.95),
-            xycoords="axes fraction", va="center", ha="left",
-            bbox=dict(boxstyle="round, pad=1", fc="w"))
+                                   (0.85, 0.95),
+                                   xycoords="axes fraction", va="center", ha="left",
+                                   bbox=dict(boxstyle="round, pad=1", fc="w"))
 
         # Let's also grab the metadata from isodist
         isodist_data = isodist_results[n_percent]
 
         matplotlib.pyplot.annotate("FRC_NX: %0.4f\nCHI Sq: %e\nAMP_U: %0.4f\nAMP_L: %0.4f" %
                                    (isodist_data['frc_nx'], isodist_data['chisq'], isodist_data['amp_u'], isodist_data['amp_l']),
-            (0.85, 0.70),
-            xycoords="axes fraction", va="center", ha="left",
-            bbox=dict(boxstyle="round, pad=1", fc="w"))
+                                   (0.85, 0.70),
+                                   xycoords="axes fraction", va="center", ha="left",
+                                   bbox=dict(boxstyle="round, pad=1", fc="w"))
 
         # Add our actual data (we need to add a Plot to our Figure)
         ax = fig.add_subplot(111)
         #noinspection PyTupleAssignmentBalance
         m, z = zip(*peptide_value['peaks'])
-        ax.plot(m, z, 'r-', linewidth = 0.5)
+        ax.plot(m, z, 'r-', linewidth=0.5)
 
         # Get the m/z data.
         # Note: These are pre-filtered to exclude all pairs with intensity <=0, as they mess w/ the graph.
-        isodist_m = [m/float(peptide_value['charge']) for m in isodist_data['peak_fit'][0]]
+        isodist_m = [m / float(peptide_value['charge']) for m in isodist_data['peak_fit'][0]]
         isodist_z = isodist_data['peak_fit'][1]
 
-        ax.plot(isodist_m, isodist_z, 'b-.', linewidth = 1.2)
+        ax.plot(isodist_m, isodist_z, 'b-.', linewidth=1.2)
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
 
@@ -837,6 +836,7 @@ def _peak_graph_cmd(task):
         matplotlib.pyplot.close('all')
 
     return True
+
 
 def run_isodist(dta_select_data, peptide_dict, num_threads):
     """
@@ -859,7 +859,7 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
                         'guess_for_baseline': "150.0 auto",
                         'accuracy_offset': "0.01 variable",
                         'gaussian_width': "0.003 variable",
-                        'n_percent': 0000, } # Note: n_percent is adjusted on-the-fly below.
+                        'n_percent': 0000, }  # Note: n_percent is adjusted on-the-fly below.
 
     input_template = "fitit\nbatch/%(batchfile_name)s/%(n_percent)s.batch\nexp_atom_defs.txt\n" + \
                      "res_15Nshift_%(n_percent)s.txt\n%(number_of_iterations)s\n100.0\n%(guess_for_baseline)s\n" + \
@@ -893,7 +893,7 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
                 isodist_settings['batchfile_name'] = peptide_key
                 isodist_settings['n_percent'] = n_percent
                 print(input_template % isodist_settings, file=isoinput)
-                
+
                 # Make the batchfile
                 print("%s %s peaks/%s/%s.tsv" % (peptide_value['sequence'], peptide_value['charge'], peptide_key, n_percent), file=batch)
 
@@ -903,14 +903,13 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
         except IOError:
             raise FatalError('Could not write an ./isodist/ file!')
 
-
     # Should we spawn jobs via DRMAA?
     if USE_DRMAA:
         isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
         raise FatalError('Not implemented.')
     else:
         isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
-        
+
         pool = multiprocessing.Pool(num_threads)
         #tasks = peptide_dict.keys()
         tasks = [x + "/" + str(y) for x in peptide_dict.keys() for y in N_PERCENT_RANGE]
@@ -918,7 +917,7 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
 
         # TODO: Use error_callback?)
         r = pool.map_async(_isodist_cmd, tasks, num_threads, callback=results.append)
-        r.wait() # Block until our pool returns
+        r.wait()  # Block until our pool returns
         if len(results[0]) != len(tasks):
             # You could take a set intersection and see what didn't return.
             raise FatalError('isodist execution failed!')
@@ -947,11 +946,11 @@ def read_isodist_results(input_path, peptide_dict, skip_graphs):
 
     read_logger.debug('Reading %s percent values over %s keys.' % (len(N_PERCENT_RANGE), len(peptide_dict)))
     progress = 0
-    total = len(N_PERCENT_RANGE)*len(peptide_dict)
+    total = len(N_PERCENT_RANGE) * len(peptide_dict)
 
     for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in N_PERCENT_RANGE]:
-        progress +=1
-        read_logger.debug('%0.2f%% complete. On key: %s, %s%%' % (progress/total, peptide_key, n_percent))
+        progress += 1
+        read_logger.debug('%0.2f%% complete. On key: %s, %s%%' % (progress / total, peptide_key, n_percent))
 
         # Make the [peptide_key] dict, if it doesn't exist.
         isodist_results.setdefault(peptide_key, {})
@@ -970,7 +969,7 @@ def read_isodist_results(input_path, peptide_dict, skip_graphs):
         if not skip_graphs:
             # Now let's get the raw peak fit data, and add it to the dict, too!
             with open(input_path + 'peaks/' + peptide_key + '/' + str(n_percent) + '.fit', 'rb') as fit_file:
-                peak_fit = csv.reader(fit_file, quoting=csv.QUOTE_NONNUMERIC) # Pre-cast to float
+                peak_fit = csv.reader(fit_file, quoting=csv.QUOTE_NONNUMERIC)  # Pre-cast to float
                 # Note: We filter to intensity > 0, otherwise the graphs look strange.
                 m, z = zip(*[(m, z) for m, z in peak_fit if z > 0])
                 filtered_peaks_m = array.array('f', m)
@@ -978,12 +977,11 @@ def read_isodist_results(input_path, peptide_dict, skip_graphs):
 
             isodist_results[peptide_key][n_percent]['peak_fit'] = (filtered_peaks_m, filtered_peaks_z)
 
-
     read_logger.info('isodist results loaded successfully.')
 
     return isodist_results
 
-        
+
 def _isodist_cmd(infile):
     """
     Run isodist as part of the multiprocessing/map_async command
@@ -1007,7 +1005,7 @@ def _isodist_cmd(infile):
                              cwd='./isodist/',
                              env=env,
                              )
-        stdoutdata, stderrdata = p.communicate() # This will block until isodist finishes.
+        stdoutdata, stderrdata = p.communicate()  # This will block until isodist finishes.
     except:
         raise FatalError('isodist execution failed on %s' % (infile,))
 
@@ -1065,9 +1063,9 @@ def parse_mzXML(mzXML_file):
             if scan[0].attrib['pairOrder'] != "m/z-int":
                 raise FatalError('Sorry, non m/z-int order is not implemented.')
 
-            decoded_b64 = base64.b64decode(scan[0].text) # Decode the packed b64 raw peaks
+            decoded_b64 = base64.b64decode(scan[0].text)  # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            floating_tuple = struct.unpack('>' + str(len(decoded_b64)//4) + 'f', decoded_b64) 
+            floating_tuple = struct.unpack('>' + str(len(decoded_b64) // 4) + 'f', decoded_b64)
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
@@ -1096,11 +1094,11 @@ def deploy_drmaa_job(job_command, job_parameters):
     # We have a random delay so SGE has a chance get its emotions in check.
     # Not sure if this matters for the DRMAA interface, but hey, it's just a few seconds.
     time.sleep(random.random() / 2.0)
-    
+
     job_template = DRMAA_SESSION.createJobTemplate()
     job_template.remoteCommand = job_command
     job_template.args = job_parameters
-    
+
     job_id = DRMAA_SESSION.runJob(job_template)
     drmaa_logger.info("Deployed DRMAA job: %s" % job_id)
     DRMAA_RUNNING_JOBS.append(job_id)
