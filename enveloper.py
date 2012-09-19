@@ -21,7 +21,7 @@ __version__ = '1.3.1'
 
 from optparse import OptionParser, OptionGroup
 from pkg_resources import parse_version
-from xml.etree import ElementTree
+from xml.etree import cElementTree
 import array
 import base64
 import csv
@@ -1035,7 +1035,7 @@ def parse_mzXML(mzXML_file):
 
     # Open the mzXML
     namespace = "{http://sashimi.sourceforge.net/schema_revision/mzXML_3.2}"
-    parsed_xml = ElementTree.parse(mzXML_file)
+    parsed_xml = cElementTree.parse(mzXML_file)
     scans = parsed_xml.findall(".//%sscan" % namespace)
 
     parse_mzXML_log.info('Found %s scans in mzXML file' % (len(scans),))
