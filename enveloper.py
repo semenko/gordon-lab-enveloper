@@ -41,6 +41,7 @@ import random
 import re
 import time
 import signal
+import shutil
 import string
 import struct
 import sys
@@ -309,7 +310,7 @@ def main():
     else:
         run_isodist(dta_select_data, peptide_dict, options.num_threads)
 
-    # Let's read those isodist results! WHOOO
+    # Let's read those isodist results!
     itime = time.time()
     isodist_results = read_isodist_results('./isodist/', peptide_dict, options.skip_graphs)
     log_main.info("reading isodist results took: %0.2f secs." % (time.time() - itime))
@@ -326,7 +327,7 @@ def main():
     del isodist_results  # This is huge.
 
     # Save output as CSV & HTML.
-    generate_output(peptide_dict, enrichment_predictions, logfilename)
+    generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfilename)
 
     # Cleanup.
     if USE_DRMAA:
@@ -718,22 +719,29 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     return enrichment_predictions
 
 
-def generate_output(peptide_dict, enrichment_predictions, logfilename):
+def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfilename):
     """
-    Save a final output summary of our predictions. This outputs as CSV & HTML.
+    Save a final output summary of our predictions. This outputs as CSV & HTML files.
     """
-
-    out_csv_fname = 'results/%s/%s' % (logfilename, 'envelope_results.csv')
-    out_html_fname = 'results/%s/%s' % (logfilename, 'envelope_results.html')
-
     output_log = logging.getLogger('generate_output')
-    output_log.info('Saving CSV output as: results/%s' % (out_csv_fname,))
+    output_log.info('Saving ouput to: results/%s' % (logfilename,))
 
     # Make a results directory
     try:
         os.mkdir('./results/%s' % (logfilename,))
     except OSError:
-        pass
+        raise FatalError('Results directory not writeable or already exists.')
+
+    # Copy over core Bootstrap/Jquery/Datatables files to results dir.
+    shutil.copytree('.html/assets/', 'results/%s/assets/' % logfilename)
+
+    # Read in our generic HTML and templates.
+    with open('.html/header.html') as header_fh, open('.html/footer.html') as footer_fh:
+        header = header_fh.read()
+        footer = footer_fh.read()
+ 
+    #### Peptide raw data output
+    output_log.info('Generating peptide output data...')
 
     # Prepare a dict for writing.
     # Add a 'key' value to the dict for our DictWriter
@@ -750,29 +758,57 @@ def generate_output(peptide_dict, enrichment_predictions, logfilename):
     for percent in N_PERCENT_RANGE:
         output_keys.append('guess_' + str(percent))
 
-    # Open & write our CSV file
+    # Open & write our CSV files
     # Protip: Write to sys.stderr if you're debugging this.
-    with open(out_csv_fname, 'wb') as csvout:
+    with open('results/%s/%s' % (logfilename, 'peptide_results.csv'), 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
-        # Here's a header
         csv_out.writeheader()
-        # And the contents
         csv_out.writerows(peptide_dict.itervalues())
-    output_log.info('CSV sucessfully generated.')
+    output_log.debug('Peptide CSV sucessfully generated.')
 
     # Let's make some HTML, too.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
-    output_log.info('Saving HTML output as: %s' % (out_html_fname,))
-    with open(out_html_fname, 'wb') as htmlout, open('.html/_html_header.html', 'rb') as headers, open('.html/_html_footer.html', 'rb') as footers:
-        htmlout.writelines(headers.readlines())
+    with open('results/%s/%s' % (logfilename, 'peptide_results.html'), 'wb') as htmlout, open('.html/peptide_table_head.html') as table_head:
+        htmlout.write(header)
+        htmlout.write(table_head.read())
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
             print('</td><td>'.join([str(elt.get(x, '')) for x in output_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
-        htmlout.writelines(footers.readlines())
-    output_log.info('HTML successfully generated.')
+        print('</tbody></table>', file=htmlout)
+        htmlout.write(footer)
+    output_log.debug('Peptide HTML successfully generated.')
 
+    #### End of Peptide data generation
+
+    #### Generate Protein data
+    output_log.info('Generating protein output data...')
+
+    out_protein_fn_csv = 'results/%s/%s' % (logfilename, 'protein_results.csv')
+    out_protein_fn_html = 'results/%s/%s' % (logfilename, 'protein_results.html')
+
+    #for protein_key, protein_data in dta_select_data.iteritems():
+    #    peptides = protein_data['peptides']
+    #    metadata = protein_data['metadata']
+    
+    
+
+#    for k, v in enrichment_predictions.iteritems():
+#        print("K: %s" % k)
+#        print("V: %s" % v)
+#        for k2, v2 in v.iteritems():
+#            print("\tK2: %s" % k2)
+#            print("\tV2: %s" % v2)
+
+
+    output_log.info('Finalizing HTML output statistics...')
+    # And the index template:
+    with open('.html/index_templ.html') as index_fh:
+        index = index_fh.read()
+
+
+    output_log.info('Results successfully written.')
     return True
 
 
