@@ -683,8 +683,8 @@ def pick_FRC_NX(peptide_dict, isodist_results):
                 enrichment_window.append(i[percent]['frc_nx'])
                 current_window_percent = i[percent]['frc_nx']
                 sum_window_sq += i[percent]['frc_nx'] ** 2
-            elif (len(enrichment_window) >= 5):
-                # We have five or more values that are awesome. We're set. Let's get outa' here.
+            elif (len(enrichment_window) >= 4):
+                # We have four or more values that are awesome. We're set. Let's get outa' here.
                 break
             else:
                 # We're not within 1%. Clear the window. Let's hope there are more values!
@@ -711,9 +711,9 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
             frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
 
-    frc_nx_log.info('Prediction failed for %s out of %s values (%0.2f%%)' %
-                    (fail_count, len(tasks) * len(N_PERCENT_RANGE),
-                     fail_count / (len(tasks) + len(N_PERCENT_RANGE))))
+    # TODO: Is this correct?
+    frc_nx_log.info('Prediction failed for %s out of %s peptides (%0.2f%%)' %
+                    (fail_count, len(tasks), (fail_count / len(tasks) * 100 )))
     frc_nx_log.info('Percentages chosen successfully.')
 
     return enrichment_predictions
