@@ -329,9 +329,9 @@ def main():
                 suffix = '.nographs.pkl'
             cache_key = hashlib.md5(input_directory).hexdigest() + suffix
             with open('.cache/' + cache_key, 'rb') as cached:
+                log_main.warning('Using cached data: If you\'ve re-run isodist, the cache may be stale!')
                 isodist_results = cPickle.load(cached)
             using_cache = True
-            log_main.warning('** Using cached data: If you\'ve re-run isodist, the cache may be stale!')
         except IOError:
             log_main.info('No pickle cache found. We\'ll write one momentarily.')
 
@@ -614,7 +614,7 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     FYI: Threadsafety here is not 100% certain. This may break at high thread numbers (>=24).
       Although I think that bug was fixed in Python >=2.7.
     """
-
+    
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This will take some time.')
 
@@ -638,7 +638,8 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
 
     # TODO: Use error_callback?
     r = pool.map_async(_peak_graph_cmd, tasks, chunk_size, callback=results.append)
-    r.wait()  # Block until our pool returns
+    # See previous comment RE .get() vs .wait()
+    r.get(999999)  # Block until our pool returns
 
     try:
         if len(results[0]) != len(tasks):
@@ -987,7 +988,7 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
         isodist_log.info('Distributing isodist jobs via DRMAA/SGE.')
         raise FatalError('Not implemented.')
     else:
-        isodist_log.info('Running isodist jobs locally, as DRMAA/SGE is disabled.')
+        isodist_log.info('Running isodist jobs locally.')
 
         pool = multiprocessing.Pool(num_threads)
         #tasks = peptide_dict.keys()
@@ -996,7 +997,12 @@ def run_isodist(dta_select_data, peptide_dict, num_threads):
 
         # TODO: Use error_callback?)
         r = pool.map_async(_isodist_cmd, tasks, num_threads, callback=results.append)
-        r.wait()  # Block until our pool returns
+        # We use .get() instead of .wait() due to some interrupt issues (Fixed in Py3.3?)
+        # This doesn't totally fix the proble, but it makes things a little better.
+        # See:
+        #  http://stackoverflow.com/questions/1408356/keyboard-interrupts-with-pythons-multiprocessing-pool
+        #  http://bugs.python.org/issue8296
+        r.get(999999)  # Block until our pool returns
         if len(results[0]) != len(tasks):
             # You could take a set intersection and see what didn't return.
             raise FatalError('isodist execution failed!')
