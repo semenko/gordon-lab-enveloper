@@ -11,6 +11,8 @@ DTASelect-filter.txt
 !_html_header.html
 !_html_footer.html
 !results/
+!.cache/
+!.cache/README
 !.html*
 !.html/
 !.html/*

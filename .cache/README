@@ -1,0 +1,5 @@
+A mostly unused cache directory for storing isodist results.
+
+You'll see pickled files here only if the --force-cache flag is used.
+
+Use that flag if you find yourself re-running Enveloper with --skip-isodist frequently.
