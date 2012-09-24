@@ -19,12 +19,13 @@ __copyright__ = 'Gordon Lab at Washington University in St. Louis / gordonlab.wu
 __license__ = 'MIT'
 __version__ = '1.3.1'
 
+from base64 import b64decode
 from optparse import OptionParser, OptionGroup
-from pkg_resources import parse_version
+from struct import unpack
 from xml.etree import cElementTree
 import array
-import base64
 import csv
+import cPickle
 import datetime
 import gc
 import socket
@@ -43,7 +44,6 @@ import time
 import signal
 import shutil
 import string
-import struct
 import sys
 
 ### ---------------------------------------------
@@ -221,6 +221,13 @@ def main():
                      default=False, action="store_true", dest="skip_graphs")
     parser.add_option_group(group)
 
+    # Isodist files are very slow to read (lots of tiny files), so we'd prefer a pickle cache.
+    # This is useful if you find yourself usign the "--skip-isodist" flag
+    #   (e.g. you're trying to modify the output HTML/CSV results.)
+    parser.add_option("--force-cache", help="Cache and re-use isodist data. Useful if you are modifying results files.",
+                      default=False, action="store_true", dest="force_cache")
+
+
     # Parse the input and check.
     #noinspection PyTupleAssignmentBalance
     (options, args) = parser.parse_args()
@@ -232,7 +239,7 @@ def main():
     if not os.access(input_directory, os.R_OK):
         parser.error("Cannot read input directory.")
 
-    # Check the #cpus requested
+    # Sanity check the #cpus requested
     if not 0 <= options.num_threads <= 128:
         parser.error("Invalid range for CPU limit. Choose from 0-128.")
 
@@ -310,10 +317,33 @@ def main():
     else:
         run_isodist(dta_select_data, peptide_dict, options.num_threads)
 
-    # Let's read those isodist results!
+    # Let's read those isodist results! (Perhaps from a cache.)
+    # Pickled' caches can be large, so we don't always write them.
     itime = time.time()
-    isodist_results = read_isodist_results('./isodist/', peptide_dict, options.skip_graphs)
-    log_main.info("reading isodist results took: %0.2f secs." % (time.time() - itime))
+    isodist_results = False
+    using_cache = False
+    if options.force_cache:
+        try:
+            suffix = '.pkl'
+            if options.skip_graphs:
+                suffix = '.nographs.pkl'
+            cache_key = hashlib.md5(input_directory).hexdigest() + suffix
+            with open('.cache/' + cache_key, 'rb') as cached:
+                isodist_results = cPickle.load(cached)
+            using_cache = True
+            log_main.warning('** Using cached data: If you\'ve re-run isodist, the cache may be stale!')
+        except IOError:
+            log_main.info('No pickle cache found. We\'ll write one momentarily.')
+
+    if not isodist_results:
+        isodist_results = read_isodist_results('./isodist/', peptide_dict, options.skip_graphs)
+    log_main.info("Reading isodist results took: %0.2f secs." % (time.time() - itime))
+
+    if options.force_cache and not using_cache:
+        log_main.debug('Writing isodist result data to pickle cache for future use.')
+        with open('.cache/' + cache_key, 'wb') as pickle_cache:
+            cPickle.dump(isodist_results, pickle_cache)
+
 
     # Why not make some matplotlib graphs?
     if options.skip_graphs:
@@ -367,7 +397,9 @@ def pre_run_version_checks():
     stdout = isodist_version_process.communicate()[0]
     local_isodist_version = stdout[23:27]  # Snip the isodist version string.
 
-    if not cmp(parse_version(local_isodist_version), parse_version('2008')) >= 0:
+    # We could use pkg_resources.parse_version here, but that isn't always around.
+    # Besides, there appears to be only one isodist version for the past ~5 years.
+    if local_isodist_version != '2008':
         raise FatalError('isodist is outdated. Please use a version >= 2008')
 
     # Make an isodist intermediate file directories
@@ -791,8 +823,7 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfi
     #for protein_key, protein_data in dta_select_data.iteritems():
     #    peptides = protein_data['peptides']
     #    metadata = protein_data['metadata']
-    
-    
+
 
 #    for k, v in enrichment_predictions.iteritems():
 #        print("K: %s" % k)
@@ -805,7 +836,19 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfi
     output_log.info('Finalizing HTML output statistics...')
     # And the index template:
     with open('.html/index_templ.html') as index_fh:
-        index = index_fh.read()
+        index_template = string.Template(index_fh.read())
+
+    index_template_keys = {
+        'run_id': '',
+        'run_date': '',
+        'input_path': '',
+        'protein_count': '',
+        'peptide_count': '',
+        'successful_pred': '',
+        'median_enrich': 'lolcat',
+        }
+    with open('results/%s/%s' % (logfilename, 'index.html'), 'w') as index:
+        index.write(index_template.substitute(index_template_keys))
 
 
     output_log.info('Results successfully written.')
@@ -1099,9 +1142,9 @@ def parse_mzXML(mzXML_file):
             if scan[0].attrib['pairOrder'] != "m/z-int":
                 raise FatalError('Sorry, non m/z-int order is not implemented.')
 
-            decoded_b64 = base64.b64decode(scan[0].text)  # Decode the packed b64 raw peaks
+            decoded_b64 = b64decode(scan[0].text)  # Decode the packed b64 raw peaks
             # These are packed as big-endian IEEE 754 binary32
-            floating_tuple = struct.unpack('>' + str(len(decoded_b64) // 4) + 'f', decoded_b64)
+            floating_tuple = unpack('>' + str(len(decoded_b64) // 4) + 'f', decoded_b64)
             ms1[scan_num]['peak'] = zip(floating_tuple[::2], floating_tuple[1::2])
 
         elif scan.attrib['msInstrumentID'] == "IC2":
