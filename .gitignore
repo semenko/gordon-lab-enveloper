@@ -21,3 +21,5 @@ DTASelect-filter.txt
 !.html/assets/css/*
 !.html/assets/js/*
 !.html/assets/img/*
+!LICENSE
+!README.md
