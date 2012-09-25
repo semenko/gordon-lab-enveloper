@@ -793,7 +793,7 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
 
     # Read in our generic HTML and templates.
     with open('.html/header.html') as header_fh, open('.html/footer.html') as footer_fh:
-        header = header_fh.read()
+        header_template = string.Template(header_fh.read())
         footer = footer_fh.read()
  
     #### Peptide raw data output
@@ -810,9 +810,6 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
 
     # Dictionary keys for our output results.
     output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
-    # Add the "guess_0" -> 100 columns
-    for percent in N_PERCENT_RANGE:
-        output_keys.append('guess_' + str(percent))
 
     # Open & write our CSV files
     # Protip: Write to sys.stderr if you're debugging this.
@@ -830,10 +827,28 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     # Let's make some HTML, too.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
+
+    # First, let's make a tiny summary table.
+    with open('.html/summary_table_head.html') as summary_head:
+        summary_table_head = summary_head.read()
+    with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
+        htmlout.write(header_template.safe_substitute(summary_active='active'))
+        htmlout.write(summary_table_head)
+        for elt in peptide_dict.itervalues():
+            print('<tr><td>', file=htmlout)
+            print('</td><td>'.join([str(elt.get(x, '')) for x in output_keys]), file=htmlout)
+            print('</td></tr>', file=htmlout)
+        print('</tbody></table>', file=htmlout)
+        htmlout.write(footer)
+
+    # Add the "guess_0" -> 100 columns (for a much larger table)
+    for percent in N_PERCENT_RANGE:
+        output_keys.append('guess_' + str(percent))
+
     with open('.html/peptide_table_head.html') as peptide_head:
         peptide_table_head = peptide_head.read()
     with open('results/%s/%s' % (results_path, 'all_peptides.html'), 'wb') as htmlout:
-        htmlout.write(header)
+        htmlout.write(header_template.safe_substitute(peptide_active='active'))
         htmlout.write(peptide_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
@@ -841,6 +856,7 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
+
     output_log.debug('Peptide HTML successfully generated.')
 
     #### End of Peptide data generation
@@ -857,7 +873,7 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
     with open('results/%s/%s' % (results_path, 'by_protein.html'), 'w') as by_protein:
-        by_protein.write(header)
+        by_protein.write(header_template.safe_substitute(protein_active='active'))
         by_protein.write(protein_table_head)
         # MAGIC HERE
         by_protein.write(footer)
@@ -885,7 +901,7 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
         'median_enrich': 'lolcat',
         }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
-        index.write(header)
+        index.write(header_template.safe_substitute(index_active='active'))
         index.write(index_template.substitute(index_template_keys))
         index.write(footer)
 
