@@ -221,10 +221,10 @@ def main():
                      default=False, action="store_true", dest="skip_graphs")
     parser.add_option_group(group)
 
-    # Isodist files are very slow to read (lots of tiny files), so we'd prefer a pickle cache.
+    # Some files are very slow to read (lots of tiny files), so we'd prefer a pickle cache.
     # This is useful if you find yourself usign the "--skip-isodist" flag
     #   (e.g. you're trying to modify the output HTML/CSV results.)
-    parser.add_option("--force-cache", help="Cache and re-use isodist data. Useful if you are modifying results files.",
+    parser.add_option("--force-cache", help="Cache and re-use parsed data. Useful if you are tweaking the HTML output.",
                       default=False, action="store_true", dest="force_cache")
 
 
@@ -299,17 +299,41 @@ def main():
         log_main.info('Disabling garbage is disabled. Use --enable-gc to override.')
         gc.disable()
 
-    # Now that we have the isodist predicted spectra, parse the mzXML
-    # TODO: Modularize these filenames better.
-    ms1_data, ms2_to_ms1 = parse_mzXML(input_directory.rstrip('/') + '/' + [fname for fname in directory_list if fname.endswith('.mzXML')][0])
+    # We can short-circuit the mzXML parsing and peak extraction if we're super cached.
+    peptide_dict = None
+    if options.force_cache:
+        # NOTE: Caching is essentially *only* useful if you're modifying this script.
+        log_main.warning('You have requested to use cached data! Are you sure you want that?!')
+        peptide_cache_key = hashlib.md5(input_directory).hexdigest() + '.peptide_dict.pkl'
+        try:
+            with open('.cache/' + peptide_cache_key, 'rb') as peptide_cached:
+                peptide_dict = cPickle.load(peptide_cached)
+        except IOError:
+            log_main.info('No peptide_dict cache found. We\'ll write one momentarily.')
 
-    # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
-    # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
-    peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1)
+    # We almost always enter this chunk. The exception is if we've cached results,
+    # probably for development purposes.
+    if peptide_dict is None:
+        # Parze the input mzXML data (we need this for peptide dict generation)
+        # TODO: Modularize these filenames better.
+        ms1_data, ms2_to_ms1 = parse_mzXML(input_directory.rstrip('/') + '/' + [fname for fname in directory_list if fname.endswith('.mzXML')][0])
 
-    log_main.debug('Enabling GC and marking ms1_data for deletion.')
-    gc.enable()   # Enable GC (if it was disabled), since the big stuff is done.
-    del ms1_data  # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
+        # Now that we have the ms1 & DTASelect data, let's try to pick some peaks.
+        # This is tricky, since DTASelect data is from MS2, so we have to kinda' guess the MS1 spectra.
+        peptide_dict = extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1)
+
+        log_main.debug('Enabling GC and marking ms1_data for deletion.')
+        gc.enable()   # Enable GC (if it was disabled), since the big stuff is done.
+        del ms1_data  # This is big. Go away. (Note: This doesn't imply python will free() the memory.)
+
+        if options.force_cache:
+            with open('.cache/' + peptide_cache_key, 'wb') as pep_pickle_cache:
+                cPickle.dump(peptide_dict, pep_pickle_cache)
+
+    else:
+        # Whoa, we got a peptide cache! Cool.
+        log_main.warning('Using cached peptide data: If you\'ve modified input data, the cache will be stale!')
+
 
     # Run isodist unless we're told to skip it. This can be slow.
     if options.skip_isodist:
@@ -321,7 +345,6 @@ def main():
     # Pickled' caches can be large, so we don't always write them.
     itime = time.time()
     isodist_results = False
-    using_cache = False
     if options.force_cache:
         try:
             suffix = '.pkl'
@@ -329,21 +352,21 @@ def main():
                 suffix = '.nographs.pkl'
             cache_key = hashlib.md5(input_directory).hexdigest() + suffix
             with open('.cache/' + cache_key, 'rb') as cached:
-                log_main.warning('Using cached data: If you\'ve re-run isodist, the cache may be stale!')
                 isodist_results = cPickle.load(cached)
-            using_cache = True
         except IOError:
             log_main.info('No pickle cache found. We\'ll write one momentarily.')
 
     if not isodist_results:
         isodist_results = read_isodist_results('./isodist/', peptide_dict, options.skip_graphs)
+        if options.force_cache:
+            log_main.debug('Writing isodist result data to pickle cache for future use.')
+            with open('.cache/' + cache_key, 'wb') as pickle_cache:
+                cPickle.dump(isodist_results, pickle_cache)
+    else:
+        # We got cached isodist results. Cool!
+        log_main.warning('Using cached data: If you\'ve re-run isodist, the cache will be stale!')
+
     log_main.info("Reading isodist results took: %0.2f secs." % (time.time() - itime))
-
-    if options.force_cache and not using_cache:
-        log_main.debug('Writing isodist result data to pickle cache for future use.')
-        with open('.cache/' + cache_key, 'wb') as pickle_cache:
-            cPickle.dump(isodist_results, pickle_cache)
-
 
     # Why not make some matplotlib graphs?
     if options.skip_graphs:
@@ -849,7 +872,9 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfi
         'median_enrich': 'lolcat',
         }
     with open('results/%s/%s' % (logfilename, 'index.html'), 'w') as index:
+        index.write(header)
         index.write(index_template.substitute(index_template_keys))
+        index.write(footer)
 
 
     output_log.info('Results successfully written.')
