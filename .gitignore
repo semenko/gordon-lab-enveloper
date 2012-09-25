@@ -16,3 +16,8 @@ DTASelect-filter.txt
 !.html*
 !.html/
 !.html/*
+!.html/assets/
+!.html/assets/*
+!.html/assets/css/*
+!.html/assets/js/*
+!.html/assets/img/*

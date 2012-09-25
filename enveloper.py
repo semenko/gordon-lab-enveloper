@@ -830,9 +830,11 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     # Let's make some HTML, too.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
-    with open('results/%s/%s' % (results_path, 'all_peptides.html'), 'wb') as htmlout, open('.html/peptide_table_head.html') as table_head:
+    with open('.html/peptide_table_head.html') as peptide_head:
+        peptide_table_head = peptide_head.read()
+    with open('results/%s/%s' % (results_path, 'all_peptides.html'), 'wb') as htmlout:
         htmlout.write(header)
-        htmlout.write(table_head.read())
+        htmlout.write(peptide_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
             print('</td><td>'.join([str(elt.get(x, '')) for x in output_keys]), file=htmlout)
@@ -852,9 +854,13 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     #for protein_key, protein_data in dta_select_data.iteritems():
     #    peptides = protein_data['peptides']
     #    metadata = protein_data['metadata']
-
+    with open('.html/protein_table_head.html') as protein_head:
+        protein_table_head = protein_head.read()
     with open('results/%s/%s' % (results_path, 'by_protein.html'), 'w') as by_protein:
-        pass
+        by_protein.write(header)
+        by_protein.write(protein_table_head)
+        # MAGIC HERE
+        by_protein.write(footer)
 
 #    for k, v in enrichment_predictions.iteritems():
 #        print("K: %s" % k)

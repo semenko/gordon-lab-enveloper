@@ -67,12 +67,37 @@
         <div class="span4">
           <h2>All Peptides</h2>
           <p>Donec id elit non mi porta gravida at eget metus. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa justo sit amet risus. Etiam porta sem malesuada magna mollis euismod. Donec sed odio dui. </p>
-          <p><a class="btn btn-primary" href="#">View Table &raquo;</a></p>
+          <p><a class="btn btn-info" href="#">View Table &raquo;</a></p>
        </div>
         <div class="span4">
           <h2>Raw Data</h2>
-          <p>Donec sed odio dui. Cras justo odio, dapibus ac facilisis in, egestas eget quam. Vestibulum id ligula porta felis euismod semper. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa justo sit amet risus.</p>
-          <p><a class="btn btn-primary" href="#">Download Files &raquo;</a></p>
+          <div class="bs-docs-example">
+
+            <table class="table table-bordered">
+              <thead>
+                <tr>
+                  <th>Data Type</th>
+                  <th>Download</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td rowspan="2">By Protein</td>
+                  <td><a class="btn btn-mini btn-primary" href="by_protein.csv">by_protein.csv</a></td>
+                </tr>
+                <tr>
+                  <td><a class="btn btn-mini btn-primary" href="by_protein.tsv">by_protein.tsv</a></td>
+                </tr>
+                <tr>
+                  <td rowspan="2">All Peptides</td>
+                  <td><a class="btn btn-mini btn-info" href="all_peptides.csv">all_peptides.csv</a></td>
+                </tr>
+                <tr>
+                  <td><a class="btn btn-mini btn-info" href="all_peptides.tsv">all_peptides.tsv</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
