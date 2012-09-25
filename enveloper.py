@@ -775,21 +775,21 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     return enrichment_predictions
 
 
-def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfilename):
+def generate_output(dta_select_data, peptide_dict, enrichment_predictions, results_path):
     """
     Save a final output summary of our predictions. This outputs as CSV & HTML files.
     """
     output_log = logging.getLogger('generate_output')
-    output_log.info('Saving ouput to: results/%s' % (logfilename,))
+    output_log.info('Saving ouput to: results/%s' % (results_path,))
 
     # Make a results directory
     try:
-        os.mkdir('./results/%s' % (logfilename,))
+        os.mkdir('./results/%s' % (results_path,))
     except OSError:
         raise FatalError('Results directory not writeable or already exists.')
 
     # Copy over core Bootstrap/Jquery/Datatables files to results dir.
-    shutil.copytree('.html/assets/', 'results/%s/assets/' % logfilename)
+    shutil.copytree('.html/assets/', 'results/%s/assets/' % results_path)
 
     # Read in our generic HTML and templates.
     with open('.html/header.html') as header_fh, open('.html/footer.html') as footer_fh:
@@ -816,16 +816,21 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfi
 
     # Open & write our CSV files
     # Protip: Write to sys.stderr if you're debugging this.
-    with open('results/%s/%s' % (logfilename, 'peptide_results.csv'), 'wb') as csvout:
+    with open('results/%s/%s' % (results_path, 'all_peptides.csv'), 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
         csv_out.writeheader()
         csv_out.writerows(peptide_dict.itervalues())
-    output_log.debug('Peptide CSV sucessfully generated.')
+    # And TSV, too.
+    with open('results/%s/%s' % (results_path, 'all_peptides.tsv'), 'wb') as tsvout:
+        tsv_out = csv.DictWriter(tsvout, output_keys, extrasaction='ignore', dialect=csv.excel_tab)
+        tsv_out.writeheader()
+        tsv_out.writerows(peptide_dict.itervalues())
+    output_log.debug('Peptide CSV/TSV sucessfully generated.')
 
     # Let's make some HTML, too.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
-    with open('results/%s/%s' % (logfilename, 'peptide_results.html'), 'wb') as htmlout, open('.html/peptide_table_head.html') as table_head:
+    with open('results/%s/%s' % (results_path, 'all_peptides.html'), 'wb') as htmlout, open('.html/peptide_table_head.html') as table_head:
         htmlout.write(header)
         htmlout.write(table_head.read())
         for elt in peptide_dict.itervalues():
@@ -841,13 +846,15 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfi
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-    out_protein_fn_csv = 'results/%s/%s' % (logfilename, 'protein_results.csv')
-    out_protein_fn_html = 'results/%s/%s' % (logfilename, 'protein_results.html')
+    out_protein_fn_csv = 'results/%s/%s' % (results_path, 'protein_results.csv')
+    out_protein_fn_html = 'results/%s/%s' % (results_path, 'protein_results.html')
 
     #for protein_key, protein_data in dta_select_data.iteritems():
     #    peptides = protein_data['peptides']
     #    metadata = protein_data['metadata']
 
+    with open('results/%s/%s' % (results_path, 'by_protein.html'), 'w') as by_protein:
+        pass
 
 #    for k, v in enrichment_predictions.iteritems():
 #        print("K: %s" % k)
@@ -871,7 +878,7 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfi
         'successful_pred': '',
         'median_enrich': 'lolcat',
         }
-    with open('results/%s/%s' % (logfilename, 'index.html'), 'w') as index:
+    with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header)
         index.write(index_template.substitute(index_template_keys))
         index.write(footer)
