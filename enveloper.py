@@ -727,6 +727,8 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
         sum_window_sq = 0.0
 
+        # UHHH we re-invented K-Means clustering here #FML
+
         # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% limit
         current_window_percent = -10  # An impossible to return enrichment value.
         enrichment_window = []
@@ -832,11 +834,11 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     with open('.html/summary_table_head.html') as summary_head:
         summary_table_head = summary_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
-        htmlout.write(header_template.safe_substitute(summary_active='active'))
+        htmlout.write(header_template.safe_substitute(peptide_active='active'))
         htmlout.write(summary_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
-            print('</td><td>'.join([str(elt.get(x, '')) for x in output_keys]), file=htmlout)
+            print('</td><td>'.join([str(elt.get(x, '<i>Failed</i>')) for x in output_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
@@ -847,8 +849,8 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
 
     with open('.html/peptide_table_head.html') as peptide_head:
         peptide_table_head = peptide_head.read()
-    with open('results/%s/%s' % (results_path, 'all_peptides.html'), 'wb') as htmlout:
-        htmlout.write(header_template.safe_substitute(peptide_active='active'))
+    with open('results/%s/%s' % (results_path, 'peptide_details.html'), 'wb') as htmlout:
+        htmlout.write(header_template.safe_substitute(peptide_details='active'))
         htmlout.write(peptide_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
@@ -864,18 +866,37 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-    out_protein_fn_csv = 'results/%s/%s' % (results_path, 'protein_results.csv')
-    out_protein_fn_html = 'results/%s/%s' % (results_path, 'protein_results.html')
+#    out_protein_fn_csv = 'results/%s/%s' % (results_path, 'protein_results.csv')
 
-#    for k, v in dta_select_data.iteritems():
-#    for k, v in peptide_dict.iteritems():
+    # Dictionary keys for our output results.
+    prot_output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
+
+    with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
+        csv_out = csv.DictWriter(csvout, prot_output_keys, extrasaction='ignore')
+        csv_out.writeheader()
+        csv_out.writerows(dta_select_data.itervalues())
+    # And TSV, too.
+    with open('results/%s/%s' % (results_path, 'all_proteins.tsv'), 'wb') as tsvout:
+        tsv_out = csv.DictWriter(tsvout, prot_output_keys, extrasaction='ignore', dialect=csv.excel_tab)
+        tsv_out.writeheader()
+        tsv_out.writerows(dta_select_data.itervalues())
+    output_log.debug('Protein CSV/TSV sucessfully generated.')
+
+
+    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
 
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
-    with open('results/%s/%s' % (results_path, 'by_protein.html'), 'w') as by_protein:
+    with open('results/%s/%s' % (results_path, 'protein_summary.html'), 'w') as by_protein:
         by_protein.write(header_template.safe_substitute(protein_active='active'))
         by_protein.write(protein_table_head)
-        # MAGIC HERE
+        for key in dta_select_data.iterkeys():
+            print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
+            print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
+            # TODO: REAL PRED
+            prediction = str(0)
+            print('</td><td>' + prediction + '</td></tr>', file=by_protein) # Enrichment Prediction
+        print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
 
 #    for k, v in enrichment_predictions.iteritems():
@@ -891,14 +912,15 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     with open('.html/index_templ.html') as index_fh:
         index_template = string.Template(index_fh.read())
 
+    # Metadata for the index page.
     index_template_keys = {
-        'run_id': '',
-        'run_date': '',
+        'run_id': results_path,
+        'run_date': datetime.datetime.now().strftime("%m/%d/%Y"),
         'input_path': '',
-        'protein_count': '',
-        'peptide_count': '',
+        'protein_count': len(dta_select_data.keys()),
+        'peptide_count': len(peptide_dict.keys()),
         'successful_pred': '',
-        'median_enrich': 'lolcat',
+        'median_enrich': '',
         }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))

@@ -3,8 +3,7 @@
     <div class="container"><div class="row">
       <!-- Main hero unit for a primary marketing message or call to action -->
       <div class="span4">
-        <h3>Enveloper Run: ${run_id}</h3>
-
+        <h4>Run ID: ${run_id}</h4><br>
             <div class="bs-docs-example">
               <table class="table table-striped">
                 <tbody>
@@ -29,8 +28,7 @@
             </div>
       </div>
         <div class="span4">
-          <h3>&nbsp;</h3>
-
+          <h4>&nbsp;</h4><br>
               <div class="bs-docs-example">
                 <table class="table table-striped">
                   <tbody>
@@ -60,15 +58,16 @@
       <!-- Example row of columns -->
       <div class="row">
         <div class="span4 ">
-          <h2>By Protein</h2>
-	  <p>View protein-level enrichment predictions and available metadata.</p>
-          <p><a class="btn btn-primary" href="#">View Table &raquo;</a></p>
+          <h2>Protein Data</h2>
+	  <p>View protein-level enrichment predictions, available metadata, and the supporting peptide data.</p>
+          <p><a class="btn btn-primary" href="protein_summary.html">View Summary &raquo;</a></p>
+          <p><a class="btn btn-primary" href="protein_details.html">View Full Predictions &raquo;</a></p>
         </div>
         <div class="span4">
-          <h2>All Peptides</h2>
+          <h2>Peptide Data</h2>
           <p>View all peptides, their predicted enrichment values, and some peptide metadata (sequence, charge, MZ, etc.).</p>
           <p><a class="btn btn-info" href="peptide_summary.html">View Summary &raquo;</a></p>
-          <p><a class="btn btn-info" href="all_peptides.html">View Full Predictions &raquo;</a></p>
+          <p><a class="btn btn-info" href="peptide_details.html">View Full Predictions &raquo;</a></p>
        </div>
         <div class="span4">
           <h2>Raw Data</h2>
@@ -84,10 +83,10 @@
               <tbody>
                 <tr>
                   <td rowspan="2">By Protein</td>
-                  <td><a class="btn btn-mini btn-primary" href="by_protein.csv">by_protein.csv</a></td>
+                  <td><a class="btn btn-mini btn-primary" href="all_proteins.csv">all_proteins.csv</a></td>
                 </tr>
                 <tr>
-                  <td><a class="btn btn-mini btn-primary" href="by_protein.tsv">by_protein.tsv</a></td>
+                  <td><a class="btn btn-mini btn-primary" href="all_proteins.tsv">all_proteins.tsv</a></td>
                 </tr>
                 <tr>
                   <td rowspan="2">All Peptides</td>
