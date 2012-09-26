@@ -867,9 +867,9 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     out_protein_fn_csv = 'results/%s/%s' % (results_path, 'protein_results.csv')
     out_protein_fn_html = 'results/%s/%s' % (results_path, 'protein_results.html')
 
-    #for protein_key, protein_data in dta_select_data.iteritems():
-    #    peptides = protein_data['peptides']
-    #    metadata = protein_data['metadata']
+#    for k, v in dta_select_data.iteritems():
+#    for k, v in peptide_dict.iteritems():
+
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
     with open('results/%s/%s' % (results_path, 'by_protein.html'), 'w') as by_protein:
