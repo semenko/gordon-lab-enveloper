@@ -375,12 +375,15 @@ def main():
         make_peak_graphs(peptide_dict, isodist_results, options.num_threads)
 
     # Choose winners: rank predictions and choose the best FRC_NX value
-    enrichment_predictions = pick_FRC_NX(peptide_dict, isodist_results)
+    peptide_predictions = pick_FRC_NX(peptide_dict, isodist_results)
 
     del isodist_results  # This is huge.
 
+    # Choose protein-level predictions given the peptides
+    protein_predictions = pick_protein_enrichment(peptide_dict, peptide_predictions)
+
     # Save output as CSV & HTML.
-    generate_output(dta_select_data, peptide_dict, enrichment_predictions, logfilename)
+    generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, logfilename)
 
     # Cleanup.
     if USE_DRMAA:
@@ -693,7 +696,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
     frc_nx_log.info('Predictions were made for %s peptides.' % (len(tasks),))
 
-    enrichment_predictions = {}
+    peptide_predictions = {}
 
     # Loop over the tasks based on key (key: g08_L50.21917.21917.2)
     #
@@ -716,10 +719,10 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     for k, _, i in tasks:
         frc_nx_log.debug('Choosing enrichment for %s' % (k,))
         # Set key of peptide id
-        enrichment_predictions[k] = {}
+        peptide_predictions[k] = {}
         # Add raw FRC_NX guesses from isodist
         for percent in N_PERCENT_RANGE:
-            enrichment_predictions[k]['guess_' + str(percent)] = i[percent]['frc_nx']
+            peptide_predictions[k]['guess_' + str(percent)] = i[percent]['frc_nx']
 
         # Keep some stats for std dev
         sum_all_enrich = 0.0
@@ -756,7 +759,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
         if len(enrichment_window) >= 4:
             mean = sum(enrichment_window) / float(len(enrichment_window))
-            enrichment_predictions[k]['percent'] = mean
+            peptide_predictions[k]['percent'] = mean
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
             try:
                 frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2))))
@@ -774,10 +777,17 @@ def pick_FRC_NX(peptide_dict, isodist_results):
                     (fail_count, len(tasks), (fail_count / len(tasks) * 100 )))
     frc_nx_log.info('Percentages chosen successfully.')
 
-    return enrichment_predictions
+    return peptide_predictions
 
 
-def generate_output(dta_select_data, peptide_dict, enrichment_predictions, results_path):
+def pick_protein_enrichment(peptide_dict, peptide_predictions):
+    """
+    Pick protein-level enrichments given the peptide enrichment percentages.
+    """
+    
+    return True
+
+def generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, results_path):
     """
     Save a final output summary of our predictions. This outputs as CSV & HTML files.
     """
@@ -806,8 +816,8 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     for key in peptide_dict.iterkeys():
         peptide_dict[key]['id'] = key
 
-        # Merge in any of the enrichment_predictions, overwrite collisions (!)
-        for enrich_key, enrich_val in enrichment_predictions[key].iteritems():
+        # Merge in any of the peptide_predictions, overwrite collisions (!)
+        for enrich_key, enrich_val in peptide_predictions[key].iteritems():
             peptide_dict[key][enrich_key] = enrich_val
 
     # Dictionary keys for our output results.
@@ -831,11 +841,11 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
     #   Be sure to update the HTML headers if you change things.
 
     # First, let's make a tiny summary table.
-    with open('.html/summary_table_head.html') as summary_head:
-        summary_table_head = summary_head.read()
+    with open('.html/peptide_summary_table_head.html') as summary_head:
+        peptide_summary_table_head = summary_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
         htmlout.write(header_template.safe_substitute(peptide_active='active'))
-        htmlout.write(summary_table_head)
+        htmlout.write(peptide_summary_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
             print('</td><td>'.join([str(elt.get(x, '<i>Failed</i>')) for x in output_keys]), file=htmlout)
@@ -887,8 +897,8 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
 
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
-    with open('results/%s/%s' % (results_path, 'protein_summary.html'), 'w') as by_protein:
-        by_protein.write(header_template.safe_substitute(protein_active='active'))
+    with open('results/%s/%s' % (results_path, 'protein_details.html'), 'w') as by_protein:
+        by_protein.write(header_template.safe_substitute(protein_details='active'))
         by_protein.write(protein_table_head)
         for key in dta_select_data.iterkeys():
             print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
@@ -899,7 +909,22 @@ def generate_output(dta_select_data, peptide_dict, enrichment_predictions, resul
         print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
 
-#    for k, v in enrichment_predictions.iteritems():
+    # And the protein-level summary page
+    with open('.html/protein_summary_table_head.html') as protein_head:
+        protein_summary_table_head = protein_head.read()
+    with open('results/%s/%s' % (results_path, 'protein_summary.html'), 'w') as by_protein:
+        by_protein.write(header_template.safe_substitute(protein_active='active'))
+        by_protein.write(protein_summary_table_head)
+        for key in dta_select_data.iterkeys():
+            print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
+            print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
+            # TODO: REAL PRED
+            prediction = str(0)
+            print('</td><td>' + prediction + '</td></tr>', file=by_protein) # Enrichment Prediction
+        print('</tbody></table>', file=by_protein)
+        by_protein.write(footer)
+
+#    for k, v in peptide_predictions.iteritems():
 #        print("K: %s" % k)
 #        print("V: %s" % v)
 #        for k2, v2 in v.iteritems():
