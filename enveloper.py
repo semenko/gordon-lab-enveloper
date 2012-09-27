@@ -28,7 +28,7 @@ import csv
 import cPickle
 import datetime
 import gc
-import socket
+import heapq
 import hashlib
 import logging
 import math
@@ -37,6 +37,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot
 import multiprocessing
 import os
+import socket
 import subprocess
 import random
 import re
@@ -380,10 +381,10 @@ def main():
     del isodist_results  # This is huge.
 
     # Choose protein-level predictions given the peptides
-    protein_predictions = pick_protein_enrichment(peptide_dict, peptide_predictions)
+    protein_predictions = pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions)
 
     # Save output as CSV & HTML.
-    generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, logfilename)
+#    generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, logfilename)
 
     # Cleanup.
     if USE_DRMAA:
@@ -690,7 +691,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     """
 
     frc_nx_log = logging.getLogger('pick_FRC_NX')
-    frc_nx_log.info('Determining optimal FRC_NX enrichment percentages.')
+    frc_nx_log.info('Determining optimal peptide enrichment percentages.')
 
     tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
 
@@ -698,79 +699,76 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
     peptide_predictions = {}
 
-    # Loop over the tasks based on key (key: g08_L50.21917.21917.2)
-    #
     # I'm not sure what the best way to settle on a prediction is. The options include:
     #  - Direct comparsions to raw peaks (ignoring the isodist CHI_SQ scores)
     #  - Averaging/other statistics based on CHI_SQ or other values
     #  - Windowing/mode selection
+    #  - K-Means / C-Means / Hierarchical Clustering
     #
-    # The first option never worked great for me, so I've settled on using a windowing-type approach
-    # followed by an average. We perform the following algorithm:
-    #  1. For the 10 N_PERCENT_RANGE values [0, 10, 20 ...], take each predicted FRC_NX and ...
-    #  2. Using the current FRC_NX, see if the next FRC_NX is within 1%:
+    # I've tried a lot of these, and settled on a sorted-windowing approach. This is basically
+    # a poor man's divisive hierarchical clustering strategy.
+    #
+    # The code below does:
+    #  1. For the N_PERCENT_RANGE values [0, 10, 20 ...], take each predicted FRC_NX and ...
+    #  2. Add it to a heapqueue
+    #  3. Pop off the heapqueue, looking for values within 1% of each other
     #    - If yes, continue until >= 4 values are within 1% of each other
-    #    - If no, move to the next FRC_NX and go back to step #2
-    #  3. If >=4 FRC_NX predictions are within 1% of each other, return their average, otherwise,
-    #    we refuse to maek an FRC_NX enrichment prediction.
+    #    - If no, move to the next queue entry
+    #  4. If >=4 FRC_NX predictions are within 1% of each other, return their mean, otherwise,
+    #    we refuse to make an FRC_NX enrichment prediction.
     #
-    # This may seem inelegant, but in practice, is is extremely stringent.
+    # WARNING: If you make modifications to N_PERCENT_RANGE, you may wish to tweak this approach.
     fail_count = 0
     for k, _, i in tasks:
         frc_nx_log.debug('Choosing enrichment for %s' % (k,))
-        # Set key of peptide id
+        # We'll fill this dict with each raw prediction plus our
+        # computed enrichment value, if we settle on one.
         peptide_predictions[k] = {}
-        # Add raw FRC_NX guesses from isodist
+
+        heap = []
         for percent in N_PERCENT_RANGE:
+            # Add raw FRC_NX guesses from isodist
             peptide_predictions[k]['guess_' + str(percent)] = i[percent]['frc_nx']
+            # And build our heap
+            heapq.heappush(heap, i[percent]['frc_nx'])
 
-        # Keep some stats for std dev
-        sum_all_enrich = 0.0
-        sum_all_enrich_sq = 0.0
-
-        sum_window_sq = 0.0
-
-        # UHHH we re-invented K-Means clustering here #FML
-
-        # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% limit
-        current_window_percent = -10  # An impossible to return enrichment value.
+        # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% margin
+        margin = 0.01
         enrichment_window = []
-        for percent in N_PERCENT_RANGE:
-            sum_all_enrich += i[percent]['frc_nx']
-            sum_all_enrich_sq += i[percent]['frc_nx'] ** 2
+        golden_window = False
 
-            if (current_window_percent - .01) < i[percent]['frc_nx'] < (current_window_percent + .01):
-                # We're within 1% of the previous value
-                enrichment_window.append(i[percent]['frc_nx'])
-                current_window_percent = i[percent]['frc_nx']
-                sum_window_sq += i[percent]['frc_nx'] ** 2
-            elif (len(enrichment_window) >= 4):
-                # We have four or more values that are awesome. We're set. Let's get outa' here.
-                break
-            else:
+        while heap:
+            enrich_guess = heapq.heappop(heap)
+            # Check for (and hang on to) a set of >= 4 enrichment values that are good.
+            if len(enrichment_window) >= 4:
+                golden_window = enrichment_window
+
+            # Handle the first value
+            if len(enrichment_window) == 0:
+                enrichment_window.append(enrich_guess)
+            # See if we're within 1% of the previous value
+            elif (enrichment_window[-1] - margin) < enrich_guess < (enrichment_window[-1] + margin):
+                enrichment_window.append(enrich_guess)
                 # We're not within 1%. Clear the window. Let's hope there are more values!
-                enrichment_window = []
-                current_window_percent = i[percent]['frc_nx']
-                sum_window_sq = 0.0
+            else:
+                enrichment_window = [enrich_guess]
 
         # Ok, let's see what that loop left in our enrichment window ...
-        frc_nx_log.debug('\tWindow: %s items, %s ' % (len(enrichment_window), enrichment_window))
         frc_nx_log.debug('\tRaw: %s' % ([i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
-        if len(enrichment_window) >= 4:
-            mean = sum(enrichment_window) / float(len(enrichment_window))
+        # Did we get any winners? If so, hooray!
+        if golden_window:
+            mean = sum(golden_window) / float(len(golden_window))
             peptide_predictions[k]['percent'] = mean
+            frc_nx_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
-            try:
-                frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(enrichment_window)) - (mean ** 2))))
-            except ValueError:
-                frc_nx_log.warn('\tMath domain error. Ignored.')
+        #        frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(golden_window)) - (mean ** 2))))
         else:
-            all_mean = sum_all_enrich / float(len(N_PERCENT_RANGE))
+#            all_mean = sum_all_enrich / float(len(N_PERCENT_RANGE))
             frc_nx_log.warn('\tPrediction failed for %s' % (k,))
             fail_count += 1
-            frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
-            frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
+#            frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
+#            frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
 
     # TODO: Is this correct?
     frc_nx_log.info('Prediction failed for %s out of %s peptides (%0.2f%%)' %
@@ -780,12 +778,22 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     return peptide_predictions
 
 
-def pick_protein_enrichment(peptide_dict, peptide_predictions):
+def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
     """
     Pick protein-level enrichments given the peptide enrichment percentages.
     """
+    prot_log = logging.getLogger('pick_protein_enrichment')
+    prot_log.info('Determining protein-level enrichment percentages.')
     
-    return True
+    protein_predictions = {}
+
+    for key in dta_select_data.iterkeys():
+        for peptide_id in dta_select_data[key]['peptides']:
+            pass
+        protein_predictions[key] = "ENRICH_PRED_HERE"
+
+    prot_log.info('Protein enrichment predictions complete.')
+    return protein_predictions
 
 def generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, results_path):
     """
@@ -813,7 +821,8 @@ def generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_
 
     # Prepare a dict for writing.
     # Add a 'key' value to the dict for our DictWriter
-    for key in peptide_dict.iterkeys():
+    # WARNING: We're use keys (not iterkeys) to prevent weird dict-mod while iterating issues.
+    for key in peptide_dict.keys():
         peptide_dict[key]['id'] = key
 
         # Merge in any of the peptide_predictions, overwrite collisions (!)
