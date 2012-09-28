@@ -729,8 +729,8 @@ def pick_FRC_NX(peptide_dict, isodist_results):
                          ([isodist_data[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
         golden_window, guess, mean, variance, variance_n = heap_windowing(enrich_list=enrich_list,
-                                                                   margin=0.01,
-                                                                   window_cutoff=4)
+                                                                          margin=0.01,
+                                                                          window_cutoff=4)
 
         # Did we get any winners? If so, hooray!
         if golden_window:
@@ -752,7 +752,13 @@ def heap_windowing(enrich_list, margin, window_cutoff):
     """
     DESCR GOES HERE
     """
-    # Loop over all the peptide guesses, now with a 5% margin
+    assert(margin > 0 and margin < 1)
+    assert(window_cutoff > 1)
+
+    # If we get a tiny enrich_list, give up.
+    if len(enrich_list) < 2:
+        return (False, False, False, False, False)
+
     enrichment_window = []
     golden_window = False
     guess = False
@@ -768,10 +774,6 @@ def heap_windowing(enrich_list, margin, window_cutoff):
         mean = mean + (delta / n)
         M2 = M2 + delta * (enrich_guess - mean)
 
-        # Check for (and hang on to) a set of >= window_cutoff enrichment values that are good.
-        if len(enrichment_window) >= window_cutoff:
-            golden_window = enrichment_window
-
         # Handle the first value
         if len(enrichment_window) == 0:
             enrichment_window.append(enrich_guess)
@@ -781,6 +783,11 @@ def heap_windowing(enrich_list, margin, window_cutoff):
         # We're not within MARGIN. Clear the window. Let's hope there are more values!
         else:
             enrichment_window = [enrich_guess]
+
+        # Check for (and hang on to) a set of >= window_cutoff enrichment values that are good.
+        if len(enrichment_window) >= window_cutoff:
+            golden_window = enrichment_window
+
 
     if golden_window:
         guess = sum(golden_window) / float(len(golden_window))
@@ -805,25 +812,27 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
     # Here, we're trying to choose overall protein enrichment given the peptide enrichments.
     for protein_id in dta_select_data.iterkeys():
         enrich_list = []
-#        peptide_count = dta_select_data[protein_id]['metadata']['seq_count']
+        # peptide_count = dta_select_data[protein_id]['metadata']['seq_count']
+        peptide_count = 0
         for peptide_id in dta_select_data[protein_id]['peptides'].iterkeys():
+            peptide_count += 1
             if 'percent' in peptide_predictions[peptide_id]:
                 enrich_list.append(peptide_predictions[peptide_id]['percent'])
 
-        num_samples = len(enrich_list)
+        # Print the whole list for debugging
+        prot_log.debug('\tRaw: %s' % (enrich_list, ))
 
         golden_window, guess, mean, variance, variance_n = heap_windowing(enrich_list=enrich_list,
-                                                                   margin=0.05,
-                                                                   window_cutoff=4)
+                                                                          margin=0.1,
+                                                                          window_cutoff=2)
 
         # Did we get any winners? If so, hooray!
         if golden_window:
             protein_predictions[protein_id] = { 'mean': mean,
                                                 'prediction': guess,
-                                                'num_samples': num_samples,
+                                                'num_samples': len(enrich_list),
                                                 'variance': variance,
                                                 'variance_n': variance_n }
-            print(protein_predictions[protein_id])
 
             prot_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
             prot_log.debug('\tChoosing: %0.2f%%' % (guess * 100,))
@@ -879,24 +888,9 @@ def generate_output(dta_select_data, peptide_dict,
     # Dictionary keys for our output results.
     output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
 
-    # Open & write our CSV files
-    # Protip: Write to sys.stderr if you're debugging this.
-    with open('results/%s/%s' % (results_path, 'all_peptides.csv'), 'wb') as csvout:
-        csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
-        csv_out.writeheader()
-        csv_out.writerows(peptide_dict.itervalues())
-    # And TSV, too.
-    with open('results/%s/%s' % (results_path, 'all_peptides.tsv'), 'wb') as tsvout:
-        tsv_out = csv.DictWriter(tsvout, output_keys, extrasaction='ignore', dialect=csv.excel_tab)
-        tsv_out.writeheader()
-        tsv_out.writerows(peptide_dict.itervalues())
-    output_log.debug('Peptide CSV/TSV sucessfully generated.')
-
-    # Let's make some HTML, too.
+    # First, let's make a tiny summary table.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
     #   Be sure to update the HTML headers if you change things.
-
-    # First, let's make a tiny summary table.
     with open('.html/peptide_summary_table_head.html') as summary_head:
         peptide_summary_table_head = summary_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
@@ -909,10 +903,12 @@ def generate_output(dta_select_data, peptide_dict,
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
 
+
     # Add the "guess_0" -> 100 columns (for a much larger table)
     for percent in N_PERCENT_RANGE:
         output_keys.append('guess_' + str(percent))
 
+    # And print the huge table
     with open('.html/peptide_table_head.html') as peptide_head:
         peptide_table_head = peptide_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_details.html'), 'wb') as htmlout:
@@ -925,7 +921,22 @@ def generate_output(dta_select_data, peptide_dict,
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
 
+
     output_log.debug('Peptide HTML successfully generated.')
+
+
+    # Open & write our CSV files
+    # Protip: Write to sys.stderr if you're debugging this.
+    with open('results/%s/%s' % (results_path, 'all_peptides.csv'), 'wb') as csvout:
+        csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
+        csv_out.writeheader()
+        csv_out.writerows(peptide_dict.itervalues())
+    # And TSV, too.
+    with open('results/%s/%s' % (results_path, 'all_peptides.tsv'), 'wb') as tsvout:
+        tsv_out = csv.DictWriter(tsvout, output_keys, extrasaction='ignore', dialect=csv.excel_tab)
+        tsv_out.writeheader()
+        tsv_out.writerows(peptide_dict.itervalues())
+    output_log.debug('Peptide CSV/TSV sucessfully generated.')
 
     #### End of Peptide data generation
 
@@ -980,14 +991,6 @@ def generate_output(dta_select_data, peptide_dict,
         print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
 
-#    for k, v in peptide_predictions.iteritems():
-#        print("K: %s" % k)
-#        print("V: %s" % v)
-#        for k2, v2 in v.iteritems():
-#            print("\tK2: %s" % k2)
-#            print("\tV2: %s" % v2)
-
-
     output_log.info('Finalizing HTML output statistics...')
     # And the index template:
     with open('.html/index_templ.html') as index_fh:
@@ -997,11 +1000,13 @@ def generate_output(dta_select_data, peptide_dict,
     index_template_keys = {
         'run_id': results_path,
         'run_date': datetime.datetime.now().strftime("%m/%d/%Y"),
-        'input_path': '',
+        'input_path': 'INPUT_PATH_HTML_OMG_LONG_DIR/',
         'protein_count': len(dta_select_data.keys()),
+        'protein_success': len(dta_select_data.keys()) - protein_fail_count,
+        'protein_percent': 'NNN',
         'peptide_count': len(peptide_dict.keys()),
-        'successful_pred': len(peptide_dict.keys()) - peptide_fail_count,
-        'median_enrich': '',
+        'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
+        'peptide_percent': 'NNN',
         }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))

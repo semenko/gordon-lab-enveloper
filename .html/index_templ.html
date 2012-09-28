@@ -1,8 +1,7 @@
 <!-- MAIN //-->
 
     <div class="container"><div class="row">
-      <!-- Main hero unit for a primary marketing message or call to action -->
-      <div class="span4">
+      <div class="span5">
         <h4>Run ID: ${run_id}</h4><br>
             <div class="bs-docs-example">
               <table class="table table-striped">
@@ -15,14 +14,6 @@
                     <td>Run Date </td>
                     <td>${run_date}</td>
                   </tr>
-                  <tr>
-                    <td>Protein Count </td>
-                    <td>${protein_count}</td>
-                  </tr>
-                  <tr>
-                    <td>Peptide Count</td>
-                    <td>${peptide_count}</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -33,20 +24,20 @@
                 <table class="table table-striped">
                   <tbody>
                     <tr>
-                      <td>Successful Predictions </td>
-                      <td>${successful_pred}</td>
+                      <td>Number of Proteins</td>
+                      <td>${protein_count}</td>
                     </tr>
                     <tr>
-                      <td>Median Enrichment</td>
-                      <td>${median_enrich}</td>
+                      <td><span class="icon-arrow-right"></span> Successful Predictions</td>
+                      <td>${protein_success} (${protein_percent}%)</td>
                     </tr>
                     <tr>
-                      <td>xxx</td>
-                      <td>XXX</td>
+                      <td>Number of Peptides</td>
+                      <td>${peptide_count}</td>
                     </tr>
                     <tr>
-                      <td>xxxx</td>
-                      <td>XXX</td>
+                      <td><span class="icon-arrow-right"></span> Successful Predictions</td>
+                      <td>${peptide_success} (${protein_percent}%)</td>
                     </tr>
                   </tbody>
                 </table>
@@ -82,7 +73,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td rowspan="2">By Protein</td>
+                  <td rowspan="2">All Proteins</td>
                   <td><a class="btn btn-mini btn-primary" href="all_proteins.csv">all_proteins.csv</a></td>
                 </tr>
                 <tr>
