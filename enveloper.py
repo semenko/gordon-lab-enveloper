@@ -228,7 +228,6 @@ def main():
     parser.add_option("--force-cache", help="Cache and re-use parsed data. Useful if you are tweaking the HTML output.",
                       default=False, action="store_true", dest="force_cache")
 
-
     # Parse the input and check.
     #noinspection PyTupleAssignmentBalance
     (options, args) = parser.parse_args()
@@ -330,11 +329,9 @@ def main():
         if options.force_cache:
             with open('.cache/' + peptide_cache_key, 'wb') as pep_pickle_cache:
                 cPickle.dump(peptide_dict, pep_pickle_cache)
-
     else:
         # Whoa, we got a peptide cache! Cool.
         log_main.warning('Using cached peptide data: If you\'ve modified input data, the cache will be stale!')
-
 
     # Run isodist unless we're told to skip it. This can be slow.
     if options.skip_isodist:
@@ -763,7 +760,7 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             fail_count += 1
 
     frc_nx_log.info('Prediction failed for %s out of %s peptides (%0.2f%%)' %
-                    (fail_count, peptide_count, (fail_count / peptide_count * 100 )))
+                    (fail_count, peptide_count, (fail_count / peptide_count * 100)))
 
     frc_nx_log.info('Peptide enrichment percentages chosen successfully.')
     return peptide_predictions
