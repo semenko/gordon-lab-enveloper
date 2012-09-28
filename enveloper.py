@@ -28,7 +28,6 @@ import csv
 import cPickle
 import datetime
 import gc
-import heapq
 import hashlib
 import logging
 import math
@@ -373,15 +372,17 @@ def main():
         make_peak_graphs(peptide_dict, isodist_results, options.num_threads)
 
     # Choose winners: rank predictions and choose the best FRC_NX value
-    peptide_predictions = pick_FRC_NX(peptide_dict, isodist_results)
+    peptide_predictions, peptide_fail_count = pick_FRC_NX(peptide_dict, isodist_results)
 
     del isodist_results  # This is huge.
 
     # Choose protein-level predictions given the peptides
-    protein_predictions = pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions)
+    protein_predictions, protein_fail_count = pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions)
 
     # Save output as CSV & HTML.
-#    generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, logfilename)
+    generate_output(dta_select_data, peptide_dict,
+                    peptide_predictions, peptide_fail_count,
+                    protein_predictions, protein_fail_count, logfilename)
 
     # Cleanup.
     if USE_DRMAA:
@@ -699,8 +700,8 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     #
     # The code below does:
     #  1. For the N_PERCENT_RANGE values [0, 10, 20 ...], take each predicted FRC_NX and ...
-    #  2. Add it to a heapqueue
-    #  3. Pop off the heapqueue, looking for values within 1% of each other
+    #  2. Add it to a list (or heapq if you have a ton of these and want O(lgn) )
+    #  3. Loop over the list (pop the heap), looking for values within 1% of each other
     #    - If yes, continue until >= 4 values are within 1% of each other
     #    - If no, move to the next queue entry
     #  4. If >=4 FRC_NX predictions are within 1% of each other, return their mean, otherwise,
@@ -716,45 +717,26 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         peptide_predictions[peptide_id] = {}
         isodist_data = isodist_results[peptide_id]
 
-        heap = []
+        enrich_list = []
         for percent in N_PERCENT_RANGE:
             # Add raw FRC_NX guesses from isodist
             isodist_guess = isodist_data[percent]['frc_nx']
             peptide_predictions[peptide_id]['guess_' + str(percent)] = isodist_guess
-            # And build our heap
-            heapq.heappush(heap, isodist_guess)
+            enrich_list.append(isodist_guess)
 
-        # Ok, let's see what that loop left in our enrichment window ...
+        # Print the raw window for debugging.
         frc_nx_log.debug('\tRaw: %s' %
                          ([isodist_data[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
-        # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% margin
-        margin = 0.01
-        enrichment_window = []
-        golden_window = False
-
-        while heap:
-            enrich_guess = heapq.heappop(heap)
-            # Check for (and hang on to) a set of >= 4 enrichment values that are good.
-            if len(enrichment_window) >= 4:
-                golden_window = enrichment_window
-
-            # Handle the first value
-            if len(enrichment_window) == 0:
-                enrichment_window.append(enrich_guess)
-            # See if we're within 1% of the previous value
-            elif (enrichment_window[-1] - margin) < enrich_guess < (enrichment_window[-1] + margin):
-                enrichment_window.append(enrich_guess)
-                # We're not within 1%. Clear the window. Let's hope there are more values!
-            else:
-                enrichment_window = [enrich_guess]
+        golden_window, guess, mean, variance, variance_n = heap_windowing(enrich_list=enrich_list,
+                                                                   margin=0.01,
+                                                                   window_cutoff=4)
 
         # Did we get any winners? If so, hooray!
         if golden_window:
-            mean = sum(golden_window) / float(len(golden_window))
-            peptide_predictions[peptide_id]['percent'] = mean
+            peptide_predictions[peptide_id]['percent'] = guess
             frc_nx_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
-            frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
+            frc_nx_log.debug('\tChoosing: %0.2f%%' % (guess * 100,))
         else:
             frc_nx_log.warn('\tPrediction failed for %s' % (peptide_id,))
             fail_count += 1
@@ -763,7 +745,50 @@ def pick_FRC_NX(peptide_dict, isodist_results):
                     (fail_count, peptide_count, (fail_count / peptide_count * 100)))
 
     frc_nx_log.info('Peptide enrichment percentages chosen successfully.')
-    return peptide_predictions
+    return (peptide_predictions, fail_count)
+
+
+def heap_windowing(enrich_list, margin, window_cutoff):
+    """
+    DESCR GOES HERE
+    """
+    # Loop over all the peptide guesses, now with a 5% margin
+    enrichment_window = []
+    golden_window = False
+    guess = False
+
+    n = 0
+    mean = 0.0
+    M2 = 0.0
+
+    for enrich_guess in sorted(enrich_list):
+        # This is Welford's algorithm, as implemented by Knuth
+        n += 1
+        delta = enrich_guess - mean
+        mean = mean + (delta / n)
+        M2 = M2 + delta * (enrich_guess - mean)
+
+        # Check for (and hang on to) a set of >= window_cutoff enrichment values that are good.
+        if len(enrichment_window) >= window_cutoff:
+            golden_window = enrichment_window
+
+        # Handle the first value
+        if len(enrichment_window) == 0:
+            enrichment_window.append(enrich_guess)
+        # See if we're within MARGIN of the previous value
+        elif (enrichment_window[-1] - margin) < enrich_guess < (enrichment_window[-1] + margin):
+            enrichment_window.append(enrich_guess)
+        # We're not within MARGIN. Clear the window. Let's hope there are more values!
+        else:
+            enrichment_window = [enrich_guess]
+
+    if golden_window:
+        guess = sum(golden_window) / float(len(golden_window))
+
+    variance_n = M2 / n
+    variance = M2 / (n - 1)
+
+    return (golden_window, guess, mean, variance, variance_n)
 
 
 def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
@@ -772,18 +797,52 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
     """
     prot_log = logging.getLogger('pick_protein_enrichment')
     prot_log.info('Determining protein-level enrichment percentages.')
-    
+    protein_count = len(dta_select_data.keys())
     protein_predictions = {}
+    fail_count = 0
 
-    for key in dta_select_data.iterkeys():
-        for peptide_id in dta_select_data[key]['peptides']:
-            pass
-        protein_predictions[key] = "ENRICH_PRED_HERE"
+    # This is a very similar approach to the above windowed algorithm.
+    # Here, we're trying to choose overall protein enrichment given the peptide enrichments.
+    for protein_id in dta_select_data.iterkeys():
+        enrich_list = []
+#        peptide_count = dta_select_data[protein_id]['metadata']['seq_count']
+        for peptide_id in dta_select_data[protein_id]['peptides'].iterkeys():
+            if 'percent' in peptide_predictions[peptide_id]:
+                enrich_list.append(peptide_predictions[peptide_id]['percent'])
+
+        num_samples = len(enrich_list)
+
+        golden_window, guess, mean, variance, variance_n = heap_windowing(enrich_list=enrich_list,
+                                                                   margin=0.05,
+                                                                   window_cutoff=4)
+
+        # Did we get any winners? If so, hooray!
+        if golden_window:
+            protein_predictions[protein_id] = { 'mean': mean,
+                                                'prediction': guess,
+                                                'num_samples': num_samples,
+                                                'variance': variance,
+                                                'variance_n': variance_n }
+            print(protein_predictions[protein_id])
+
+            prot_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
+            prot_log.debug('\tChoosing: %0.2f%%' % (guess * 100,))
+        else:
+            prot_log.warn('\tPrediction failed for %s' % (peptide_id,))
+            fail_count += 1
+
+    prot_log.info('Prediction failed for %s out of %s proteins (%0.2f%%)' %
+                  (fail_count, protein_count, (fail_count / protein_count * 100)))
+    
+
 
     prot_log.info('Protein enrichment predictions complete.')
-    return protein_predictions
+    return (protein_predictions, fail_count)
 
-def generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_predictions, results_path):
+def generate_output(dta_select_data, peptide_dict,
+                    peptide_predictions, peptide_fail_count,
+                    protein_predictions, protein_fail_count,
+                    results_path):
     """
     Save a final output summary of our predictions. This outputs as CSV & HTML files.
     """
@@ -941,7 +1000,7 @@ def generate_output(dta_select_data, peptide_dict, peptide_predictions, protein_
         'input_path': '',
         'protein_count': len(dta_select_data.keys()),
         'peptide_count': len(peptide_dict.keys()),
-        'successful_pred': '',
+        'successful_pred': len(peptide_dict.keys()) - peptide_fail_count,
         'median_enrich': '',
         }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
