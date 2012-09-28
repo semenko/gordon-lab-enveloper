@@ -879,7 +879,7 @@ def generate_output(dta_select_data, peptide_dict,
     # Add a 'key' value to the dict for our DictWriter
     # WARNING: We're use keys (not iterkeys) to prevent weird dict-mod while iterating issues.
     for key in peptide_dict.keys():
-        peptide_dict[key]['id'] = key
+        peptide_dict[key]['id'] = key # We add the id into this level of the dict as a hack for writing later.
 
         # Merge in any of the peptide_predictions, overwrite collisions (!)
         for enrich_key, enrich_val in peptide_predictions[key].iteritems():
@@ -898,7 +898,7 @@ def generate_output(dta_select_data, peptide_dict,
         htmlout.write(peptide_summary_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
-            print('</td><td>'.join([str(elt.get(x, '<i>Failed</i>')) for x in output_keys]), file=htmlout)
+            print('</td><td>'.join([str(elt.get(x, '<i style="color:red">Failed</i>')) for x in output_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
@@ -916,7 +916,7 @@ def generate_output(dta_select_data, peptide_dict,
         htmlout.write(peptide_table_head)
         for elt in peptide_dict.itervalues():
             print('<tr><td>', file=htmlout)
-            print('</td><td>'.join([str(elt.get(x, '')) for x in output_keys]), file=htmlout)
+            print('</td><td>'.join([str(elt.get(x, '<i style="color:red">Failed</i>')) for x in output_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
@@ -943,10 +943,15 @@ def generate_output(dta_select_data, peptide_dict,
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-#    out_protein_fn_csv = 'results/%s/%s' % (results_path, 'protein_results.csv')
+    for key in dta_select_data.keys():
+        dta_select_data[key]['id'] = key # Again, merege in to same dict level for ease later.
+
+        # Merge in any of the protein_predictions, overwrite collisions (!)
+        for enrich_key, enrich_val in protein_predictions[key].iteritems():
+            dta_select_data[key]['metadata'][enrich_key] = enrich_val
 
     # Dictionary keys for our output results.
-    prot_output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
+    prot_output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent', 'prediction']
 
     with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, prot_output_keys, extrasaction='ignore')
@@ -960,7 +965,7 @@ def generate_output(dta_select_data, peptide_dict,
     output_log.debug('Protein CSV/TSV sucessfully generated.')
 
 
-    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
+    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count', 'prediction']
 
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
@@ -970,9 +975,7 @@ def generate_output(dta_select_data, peptide_dict,
         for key in dta_select_data.iterkeys():
             print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
             print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
-            # TODO: REAL PRED
-            prediction = str(0)
-            print('</td><td>' + prediction + '</td></tr>', file=by_protein) # Enrichment Prediction
+            print('</td></tr>', file=by_protein)
         print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
 
@@ -985,9 +988,7 @@ def generate_output(dta_select_data, peptide_dict,
         for key in dta_select_data.iterkeys():
             print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
             print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
-            # TODO: REAL PRED
-            prediction = str(0)
-            print('</td><td>' + prediction + '</td></tr>', file=by_protein) # Enrichment Prediction
+            print('</td></tr>', file=by_protein)
         print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
 
