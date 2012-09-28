@@ -682,22 +682,12 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
 
 def pick_FRC_NX(peptide_dict, isodist_results):
     """
-    Choose the best isodist FRC_NX enrichment guess. There isn't one clean way to do this.
-    I opt for:
-     Rank by chi_sq from isodist
-     Ensure top four predictions are within 1%
-       If so, choose the average of the four.
-       If not, refuse to make an FRC_NX guess.
+    Choose the best isodist FRC_NX enrichment guess.
     """
 
     frc_nx_log = logging.getLogger('pick_FRC_NX')
     frc_nx_log.info('Determining optimal peptide enrichment percentages.')
-
-    tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
-
-    frc_nx_log.info('Predictions were made for %s peptides.' % (len(tasks),))
-
-    peptide_predictions = {}
+    frc_nx_log.info('Predictions were made for %s peptides.' % (len(peptide_dict.keys()),))
 
     # I'm not sure what the best way to settle on a prediction is. The options include:
     #  - Direct comparsions to raw peaks (ignoring the isodist CHI_SQ scores)
@@ -718,19 +708,24 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     #    we refuse to make an FRC_NX enrichment prediction.
     #
     # WARNING: If you make modifications to N_PERCENT_RANGE, you may wish to tweak this approach.
+    peptide_predictions = {}
     fail_count = 0
-    for k, _, i in tasks:
-        frc_nx_log.debug('Choosing enrichment for %s' % (k,))
+    for peptide_id in peptide_dict.iterkeys():
+        frc_nx_log.debug('Choosing enrichment for %s' % (peptide_id,))
         # We'll fill this dict with each raw prediction plus our
         # computed enrichment value, if we settle on one.
-        peptide_predictions[k] = {}
+        peptide_predictions[peptide_id] = {}
 
         heap = []
         for percent in N_PERCENT_RANGE:
             # Add raw FRC_NX guesses from isodist
-            peptide_predictions[k]['guess_' + str(percent)] = i[percent]['frc_nx']
+            isodist_guess = isodist_results[peptide_key][percent]['frc_nx']
+            peptide_predictions[peptide_id]['guess_' + str(percent)] = isodist_guess
             # And build our heap
-            heapq.heappush(heap, i[percent]['frc_nx'])
+            heapq.heappush(heap, isodist_guess)
+
+        # Ok, let's see what that loop left in our enrichment window ...
+        frc_nx_log.debug('\tRaw: %s' % ([i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
         # Loop over the N_PERCENT_RANGE isodist guesses with our sliding window 1% margin
         margin = 0.01
@@ -753,28 +748,20 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             else:
                 enrichment_window = [enrich_guess]
 
-        # Ok, let's see what that loop left in our enrichment window ...
-        frc_nx_log.debug('\tRaw: %s' % ([i[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
-
         # Did we get any winners? If so, hooray!
         if golden_window:
             mean = sum(golden_window) / float(len(golden_window))
-            peptide_predictions[k]['percent'] = mean
+            peptide_predictions[peptide_id]['percent'] = mean
             frc_nx_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
             frc_nx_log.debug('\tChoosing: %0.2f%%' % (mean * 100,))
-        #        frc_nx_log.debug('\t\tStd Dev: %0.5f' % (math.sqrt((sum_window_sq / len(golden_window)) - (mean ** 2))))
         else:
-#            all_mean = sum_all_enrich / float(len(N_PERCENT_RANGE))
-            frc_nx_log.warn('\tPrediction failed for %s' % (k,))
+            frc_nx_log.warn('\tPrediction failed for %s' % (peptide_id,))
             fail_count += 1
-#            frc_nx_log.debug('\t\tOverall mean: %0.2f' % (all_mean,))
-#            frc_nx_log.debug('\t\tStd Dev: %0.2f' % (math.sqrt((sum_all_enrich_sq / len(N_PERCENT_RANGE)) - (all_mean ** 2))))
 
-    # TODO: Is this correct?
     frc_nx_log.info('Prediction failed for %s out of %s peptides (%0.2f%%)' %
                     (fail_count, len(tasks), (fail_count / len(tasks) * 100 )))
-    frc_nx_log.info('Percentages chosen successfully.')
 
+    frc_nx_log.info('Peptide enrichment percentages chosen successfully.')
     return peptide_predictions
 
 
