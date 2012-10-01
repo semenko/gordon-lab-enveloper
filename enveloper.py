@@ -874,6 +874,9 @@ def generate_output(dta_select_data, peptide_dict,
                     results_path, input_directory):
     """
     Save a final output summary of our predictions. This outputs as CSV & HTML files.
+
+    Note: This uses DataTables -- if the number of columns changes, the table may break.
+       Be sure to update the HTML headers if you change things.
     """
     output_log = logging.getLogger('generate_output')
     output_log.info('Saving ouput to: results/%s' % (results_path,))
@@ -893,9 +896,11 @@ def generate_output(dta_select_data, peptide_dict,
     peptide_dict_keys = ['sequence', 'charge', 'mz', 'n15mz']
     peptide_predict_keys = ['guess', 'variance', 'variance_n']
 
-    # First, let's make a tiny summary table.
-    # Note: This uses DataTables -- if the number of columns changes, the table may break.
-    #   Be sure to update the HTML headers if you change things.
+    
+    def write_peptide_results(table_head, out_handle, full_details=False):
+    
+
+
     with open('.html/peptide_summary_table_head.html') as summary_head:
         peptide_summary_table_head = summary_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
@@ -905,6 +910,7 @@ def generate_output(dta_select_data, peptide_dict,
             print('<tr><td>' + key + '</td><td>', file=htmlout)
             print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=htmlout)
             print('</td><td>', file=htmlout)
+            # Make the guesses rounded and prettier
             print('</td><td>'.join([str(peptide_predictions[key].get(x, '<i style="color:red">Failed</i>')) for x in peptide_predict_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
@@ -912,8 +918,9 @@ def generate_output(dta_select_data, peptide_dict,
 
 
     # Add the "guess_0" -> 100 columns (for a much larger table)
-    for percent in N_PERCENT_RANGE:
-        peptide_predict_keys.append('guess_' + str(percent))
+    all_isodist_guesses = ['guess_' + str(percent) for percent in N_PERCENT_RANGE]
+#    for percent in N_PERCENT_RANGE:
+#        peptide_predict_keys.append('guess_' + str(percent))
 
     # And print the huge table
     with open('.html/peptide_table_head.html') as peptide_head:
@@ -925,13 +932,23 @@ def generate_output(dta_select_data, peptide_dict,
             print('<tr><td>' + key + '</td><td>', file=htmlout)
             print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=htmlout)
             print('</td><td>', file=htmlout)
-            print('</td><td>'.join([str(peptide_predictions[key].get(x, '<i style="color:red">Failed</i>')) for x in peptide_predict_keys]), file=htmlout)
+            # Make the guesses rounded and prettier.
+            guess = peptide_predictions[key].get('guess')
+            if guess:
+                print('</td><td>'.join([str(round(peptide_predictions[key][x] * 100, 2)) for x in peptide_predict_keys]), file=htmlout)
+            else:
+                print('<i style="color:red">Failed</i></td><td></td><td>', file=htmlout)
+            print('</td><td>', file=htmlout)
+            print('</td><td>'.join([str(peptide_predictions[key][x]) for x in all_isodist_guesses]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
 
 
     output_log.debug('Peptide HTML successfully generated.')
+
+    # Add the isodist guesses for our output
+    peptide_predict_keys.extend(all_isodist_guesses)
 
     # Open & write our CSV files
     # Protip: Write to sys.stderr if you're debugging this.
