@@ -254,8 +254,8 @@ def main():
     # Let's set up a logging system
     # We log DEBUG and higher to log file, and write INFO and higher to console.
     datestamp = datetime.datetime.now().strftime("%m%d-%H%M")
-    logfilename = datestamp + '.' + socket.gethostname().split('.')[0]
-    logging.basicConfig(filename=logfilename + '.log', filemode='w',
+    results_path = datestamp + '.' + socket.gethostname().split('.')[0]
+    logging.basicConfig(filename=results_path + '.log', filemode='w',
                         format='%(asctime)s: %(name)-25s: %(levelname)-8s: %(message)s',
                         level=logging.DEBUG)
 
@@ -272,7 +272,15 @@ def main():
     log_main.info('Welcome to enveloper.py!')
     log_main.info('Written by %s' % (__author__,))
     log_main.info('Developed for the %s' % (__copyright__,))
-    log_main.info('Logging to %s' % (logfilename + '.log',))
+    log_main.info('Logging to %s' % (results_path + '.log',))
+
+    # Make a results directory early on, so we don't die at the last possible step.
+    try:
+        os.mkdir('./results/%s' % (results_path,))
+    except OSError:
+        parser.error('Results directory not writeable or already exists.')
+
+
 
     # I hate mid-program imports like this...
     if USE_DRMAA:
@@ -369,7 +377,7 @@ def main():
     if options.skip_graphs:
         log_main.warning('Skipping peak graph generation as requested. (Graphs may be stale.)')
     else:
-        make_peak_graphs(peptide_dict, isodist_results, options.num_threads)
+        make_peak_graphs(peptide_dict, isodist_results, options.num_threads, results_path)
 
     # Choose winners: rank predictions and choose the best FRC_NX value
     peptide_predictions, peptide_fail_count, peptide_fail_percent = pick_FRC_NX(peptide_dict, isodist_results)
@@ -384,7 +392,7 @@ def main():
     generate_output(dta_select_data, peptide_dict,
                     peptide_predictions, peptide_fail_count, peptide_fail_percent,
                     protein_predictions, protein_fail_count, protein_fail_percent,
-                    logfilename, input_directory)
+                    results_path, input_directory)
 
     # Cleanup.
     if USE_DRMAA:
@@ -632,7 +640,7 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     return peptide_dict
 
 
-def make_peak_graphs(peptide_dict, isodist_results, num_threads):
+def make_peak_graphs(peptide_dict, isodist_results, num_threads, results_path):
     """
     Make some graphs of the peaks. Now featuring parallelism!
 
@@ -645,18 +653,18 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads):
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This will take some time.')
 
-    graph_log.debug('Making output directories in /graphs/.')
+    graph_log.debug('Making output directories in results/%s/graphs/' % (results_path, ))
     # Let's create output directories for graphs
     for peptide_key in peptide_dict.iterkeys():
         try:
             # Makedirs will make the parent /graphs/ if it doesn't exist.
-            os.makedirs('./graphs/%s' % (peptide_key))
+            os.makedirs('./results/%s/graphs/%s' % (results_path, peptide_key))
         except OSError:
             # Dir might already exist. If it's unwriteable, we'll FATAL it later.
             pass
 
     pool = multiprocessing.Pool(num_threads)
-    tasks = [(key, val, isodist_results[key]) for key, val in peptide_dict.iteritems()]
+    tasks = [(key, val, isodist_results[key], results_path) for key, val in peptide_dict.iteritems()]
     results = []
 
     chunk_size = len(tasks) // num_threads
@@ -870,12 +878,6 @@ def generate_output(dta_select_data, peptide_dict,
     output_log = logging.getLogger('generate_output')
     output_log.info('Saving ouput to: results/%s' % (results_path,))
 
-    # Make a results directory
-    try:
-        os.mkdir('./results/%s' % (results_path,))
-    except OSError:
-        raise FatalError('Results directory not writeable or already exists.')
-
     # Copy over core Bootstrap/Jquery/Datatables files to results dir.
     shutil.copytree('.html/assets/', 'results/%s/assets/' % results_path)
 
@@ -1028,7 +1030,7 @@ def _peak_graph_cmd(task):
     """
     Generate peak graphs as part of the multiprocessing/map_async command
     """
-    peptide_key, peptide_value, isodist_results = task
+    peptide_key, peptide_value, isodist_results, results_path = task
 
     graph_thread_log = logging.getLogger('_peak_graphs_cmd')
     graph_thread_log.debug('Graphing %s' % peptide_key)
@@ -1077,7 +1079,7 @@ def _peak_graph_cmd(task):
         # Semi-sanitized. Not secure, but we aren't likely to accidentally break things if peptide_key is insane.
         safer_key = ''.join(c for c in peptide_key if c in valid_chars)
 
-        matplotlib.pyplot.savefig("graphs/%s/%s.png" % (safer_key, n_percent))
+        matplotlib.pyplot.savefig("results/%s/graphs/%s/%s.png" % (results_path, safer_key, n_percent))
 
         # I'm not sure if this matters for memory usage.
         # Matplotlib uses a *lot* of RAM and nothing seems to reduce it.
