@@ -887,18 +887,9 @@ def generate_output(dta_select_data, peptide_dict,
     #### Peptide raw data output
     output_log.info('Generating peptide output data...')
 
-    # Prepare a dict for writing.
-    # Add a 'key' value to the dict for our DictWriter
-    # WARNING: We're use keys (not iterkeys) to prevent weird dict-mod while iterating issues.
-    for key in peptide_dict.keys():
-        peptide_dict[key]['id'] = key # We add the id into this level of the dict as a hack for writing later.
-
-        # Merge in any of the peptide_predictions, overwrite collisions (!)
-        for enrich_key, enrich_val in peptide_predictions[key].iteritems():
-            peptide_dict[key][enrich_key] = enrich_val
-
     # Dictionary keys for our output results.
-    output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'guess']
+    peptide_dict_keys = ['sequence', 'charge', 'mz', 'n15mz']
+    peptide_predict_keys = ['guess', 'variance', 'variance_n']
 
     # First, let's make a tiny summary table.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
@@ -908,9 +899,11 @@ def generate_output(dta_select_data, peptide_dict,
     with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
         htmlout.write(header_template.safe_substitute(peptide_active='active'))
         htmlout.write(peptide_summary_table_head)
-        for elt in peptide_dict.itervalues():
-            print('<tr><td>', file=htmlout)
-            print('</td><td>'.join([str(elt.get(x, '<i style="color:red">Failed</i>')) for x in output_keys]), file=htmlout)
+        for key in peptide_dict.iterkeys():
+            print('<tr><td>' + key + '</td><td>', file=htmlout)
+            print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=htmlout)
+            print('</td><td>', file=htmlout)
+            print('</td><td>'.join([str(peptide_predictions[key].get(x, '<i style="color:red">Failed</i>')) for x in peptide_predict_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
@@ -918,7 +911,7 @@ def generate_output(dta_select_data, peptide_dict,
 
     # Add the "guess_0" -> 100 columns (for a much larger table)
     for percent in N_PERCENT_RANGE:
-        output_keys.append('guess_' + str(percent))
+        peptide_predict_keys.append('guess_' + str(percent))
 
     # And print the huge table
     with open('.html/peptide_table_head.html') as peptide_head:
@@ -926,9 +919,11 @@ def generate_output(dta_select_data, peptide_dict,
     with open('results/%s/%s' % (results_path, 'peptide_details.html'), 'wb') as htmlout:
         htmlout.write(header_template.safe_substitute(peptide_details='active'))
         htmlout.write(peptide_table_head)
-        for elt in peptide_dict.itervalues():
-            print('<tr><td>', file=htmlout)
-            print('</td><td>'.join([str(elt.get(x, '<i style="color:red">Failed</i>')) for x in output_keys]), file=htmlout)
+        for key in peptide_dict.iterkeys():
+            print('<tr><td>' + key + '</td><td>', file=htmlout)
+            print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=htmlout)
+            print('</td><td>', file=htmlout)
+            print('</td><td>'.join([str(peptide_predictions[key].get(x, '<i style="color:red">Failed</i>')) for x in peptide_predict_keys]), file=htmlout)
             print('</td></tr>', file=htmlout)
         print('</tbody></table>', file=htmlout)
         htmlout.write(footer)
@@ -936,18 +931,19 @@ def generate_output(dta_select_data, peptide_dict,
 
     output_log.debug('Peptide HTML successfully generated.')
 
-
     # Open & write our CSV files
     # Protip: Write to sys.stderr if you're debugging this.
     with open('results/%s/%s' % (results_path, 'all_peptides.csv'), 'wb') as csvout:
-        csv_out = csv.DictWriter(csvout, output_keys, extrasaction='ignore')
+        csv_out = csv.DictWriter(csvout, peptide_dict_keys + peptide_predict_keys, extrasaction='ignore')
         csv_out.writeheader()
-        csv_out.writerows(peptide_dict.itervalues())
+        for key in peptide_dict.iterkeys():
+            csv_out.writerow(dict(peptide_dict[key].items() + peptide_predictions[key].items()))
     # And TSV, too.
     with open('results/%s/%s' % (results_path, 'all_peptides.tsv'), 'wb') as tsvout:
-        tsv_out = csv.DictWriter(tsvout, output_keys, extrasaction='ignore', dialect=csv.excel_tab)
+        tsv_out = csv.DictWriter(tsvout, peptide_dict_keys + peptide_predict_keys, extrasaction='ignore', dialect=csv.excel_tab)
         tsv_out.writeheader()
-        tsv_out.writerows(peptide_dict.itervalues())
+        for key in peptide_dict.iterkeys():
+            tsv_out.writerow(dict(peptide_dict[key].items() + peptide_predictions[key].items()))
     output_log.debug('Peptide CSV/TSV sucessfully generated.')
 
     #### End of Peptide data generation
@@ -980,7 +976,7 @@ def generate_output(dta_select_data, peptide_dict,
         by_protein.write(protein_table_head)
         for key in dta_select_data.iterkeys():
             print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
-            print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
+            print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=by_protein)
             print('</td></tr>', file=by_protein)
         print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
@@ -993,7 +989,7 @@ def generate_output(dta_select_data, peptide_dict,
         by_protein.write(protein_summary_table_head)
         for key in dta_select_data.iterkeys():
             print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
-            print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
+            print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=by_protein)
             print('</td><td>', file=by_protein)
             # This isn't great, but we provide raw values in the CSV/TSV output.
             print('</td><td>'.join([str(round(protein_predictions[key].get(x, '') * 100, 2)) for x in prot_prediction_keys]), file=by_protein)
