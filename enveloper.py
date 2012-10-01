@@ -896,56 +896,54 @@ def generate_output(dta_select_data, peptide_dict,
     peptide_dict_keys = ['sequence', 'charge', 'mz', 'n15mz']
     peptide_predict_keys = ['guess', 'variance', 'variance_n']
 
+   # The "guess_0" -> 100 columns (for a much larger table)
+    all_isodist_guesses = ['guess_' + str(percent) for percent in N_PERCENT_RANGE]
     
+    # A function for peptide result printing to reduce repetitive code
     def write_peptide_results(table_head, out_handle, full_details=False):
-    
-
-
+        # Highlight the top navbar
+        if full_details:
+            out_handle.write(header_template.safe_substitute(peptide_details='active'))
+        else:
+            out_handle.write(header_template.safe_substitute(peptide_active='active'))
+        # This is a table-specific header, since column counts & titles change.
+        out_handle.write(table_head)
+        for key in peptide_dict.iterkeys():
+            print('<tr><td>' + key + '</td><td>', file=out_handle)
+            print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=out_handle)
+            print('</td><td>', file=out_handle)
+            # Make the guesses rounded and prettier
+            guess = peptide_predictions[key].get('guess')
+            if guess:
+                print('</td><td>'.join([str(round(peptide_predictions[key][x] * 100, 2)) for x in peptide_predict_keys]), file=out_handle)
+            else:
+                print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
+            if full_details:
+                print('</td><td>', file=out_handle)
+                print('</td><td>'.join([str(peptide_predictions[key][x]) for x in all_isodist_guesses]), file=out_handle)
+            print('</td></tr>', file=out_handle)
+        print('</tbody></table>', file=out_handle)
+        out_handle.write(footer)
+        
+    # Print the summary table
     with open('.html/peptide_summary_table_head.html') as summary_head:
         peptide_summary_table_head = summary_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_summary.html'), 'wb') as htmlout:
-        htmlout.write(header_template.safe_substitute(peptide_active='active'))
-        htmlout.write(peptide_summary_table_head)
-        for key in peptide_dict.iterkeys():
-            print('<tr><td>' + key + '</td><td>', file=htmlout)
-            print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=htmlout)
-            print('</td><td>', file=htmlout)
-            # Make the guesses rounded and prettier
-            print('</td><td>'.join([str(peptide_predictions[key].get(x, '<i style="color:red">Failed</i>')) for x in peptide_predict_keys]), file=htmlout)
-            print('</td></tr>', file=htmlout)
-        print('</tbody></table>', file=htmlout)
-        htmlout.write(footer)
+        write_peptide_results(table_head=peptide_summary_table_head,
+                              out_handle=htmlout,
+                              full_details=False)
 
-
-    # Add the "guess_0" -> 100 columns (for a much larger table)
-    all_isodist_guesses = ['guess_' + str(percent) for percent in N_PERCENT_RANGE]
-#    for percent in N_PERCENT_RANGE:
-#        peptide_predict_keys.append('guess_' + str(percent))
-
-    # And print the huge table
+    # Print the more detailed table
     with open('.html/peptide_table_head.html') as peptide_head:
         peptide_table_head = peptide_head.read()
     with open('results/%s/%s' % (results_path, 'peptide_details.html'), 'wb') as htmlout:
-        htmlout.write(header_template.safe_substitute(peptide_details='active'))
-        htmlout.write(peptide_table_head)
-        for key in peptide_dict.iterkeys():
-            print('<tr><td>' + key + '</td><td>', file=htmlout)
-            print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=htmlout)
-            print('</td><td>', file=htmlout)
-            # Make the guesses rounded and prettier.
-            guess = peptide_predictions[key].get('guess')
-            if guess:
-                print('</td><td>'.join([str(round(peptide_predictions[key][x] * 100, 2)) for x in peptide_predict_keys]), file=htmlout)
-            else:
-                print('<i style="color:red">Failed</i></td><td></td><td>', file=htmlout)
-            print('</td><td>', file=htmlout)
-            print('</td><td>'.join([str(peptide_predictions[key][x]) for x in all_isodist_guesses]), file=htmlout)
-            print('</td></tr>', file=htmlout)
-        print('</tbody></table>', file=htmlout)
-        htmlout.write(footer)
-
+        write_peptide_results(table_head=peptide_table_head,
+                              out_handle=htmlout,
+                              full_details=True)
 
     output_log.debug('Peptide HTML successfully generated.')
+
+
 
     # Add the isodist guesses for our output
     peptide_predict_keys.extend(all_isodist_guesses)
