@@ -836,12 +836,12 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
                                           margin=0.1,
                                           window_cutoff=2)
 
-        print(predictions_dict)
+        # Make a dict to hold results
+        protein_predictions[protein_id] = {}
 
         # Did we get any winners? If so, hooray!
         if predictions_dict['golden_window']:
             # Merge in our dict
-            protein_predictions[protein_id] = dict()
             for key, value in predictions_dict.iteritems():
                 protein_predictions[protein_id][key] = value
             protein_predictions[protein_id]['num_samples'] = len(enrich_list)
@@ -955,18 +955,8 @@ def generate_output(dta_select_data, peptide_dict,
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-    for key in dta_select_data.keys():
-        dta_select_data[key]['id'] = key # Again, merge in to same dict level for ease later.
-
-        # Merge in any of the protein_predictions, overwrite collisions (!)
-        try:
-            for enrich_key, enrich_val in protein_predictions[key].iteritems():
-                dta_select_data[key]['metadata'][enrich_key] = enrich_val
-        except KeyError:
-            output_log.warning('No protein key: %s' % (key,))
-
     # Dictionary keys for our output results.
-    prot_output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
+    prot_output_keys = ['sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
 
     with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, prot_output_keys, extrasaction='ignore')
@@ -980,7 +970,8 @@ def generate_output(dta_select_data, peptide_dict,
     output_log.debug('Protein CSV/TSV sucessfully generated.')
 
 
-    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count', 'guess']
+    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
+    prot_prediction_keys = ['guess', 'variance', 'variance_n']
 
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
@@ -1003,6 +994,9 @@ def generate_output(dta_select_data, peptide_dict,
         for key in dta_select_data.iterkeys():
             print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
             print('</td><td>'.join([str(dta_select_data[key]['metadata'].get(x, '')) for x in prot_metadata_keys]), file=by_protein)
+            print('</td><td>', file=by_protein)
+            # This isn't great, but we provide raw values in the CSV/TSV output.
+            print('</td><td>'.join([str(round(protein_predictions[key].get(x, '') * 100, 2)) for x in prot_prediction_keys]), file=by_protein)
             print('</td></tr>', file=by_protein)
         print('</tbody></table>', file=by_protein)
         by_protein.write(footer)
