@@ -453,7 +453,7 @@ def pre_run_version_checks():
         if not valid_hash == observed_hash:
             # Are you seeing this error?
             # That's OK if you modified the input files. Otherwise, the are corrupt.
-            log_prerun.warn('isodist input file has been modified: %s' % (fname,))
+            log_prerun.warning('isodist input file has been modified: %s' % (fname,))
 
     log_prerun.debug('Version checks passed.')
     return True
@@ -730,17 +730,20 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         frc_nx_log.debug('\tRaw: %s' %
                          ([isodist_data[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
-        golden_window, guess, mean, variance, variance_n = heap_windowing(enrich_list=enrich_list,
-                                                                          margin=0.01,
-                                                                          window_cutoff=4)
+        predictions_dict = heap_windowing(enrich_list=enrich_list,
+                                          margin=0.01,
+                                          window_cutoff=4)
 
         # Did we get any winners? If so, hooray!
-        if golden_window:
-            peptide_predictions[peptide_id]['percent'] = guess
-            frc_nx_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
-            frc_nx_log.debug('\tChoosing: %0.2f%%' % (guess * 100,))
+        if predictions_dict['golden_window']:
+            # Merge in our dict
+            for key, value in predictions_dict.iteritems():
+                peptide_predictions[peptide_id][key] = value
+            frc_nx_log.debug('\tWindow: %s items, %s' % (len(predictions_dict['golden_window']),
+                                                         predictions_dict['golden_window']))
+            frc_nx_log.debug('\tChoosing: %0.2f%%' % (predictions_dict['guess'] * 100,))
         else:
-            frc_nx_log.warn('\tPrediction failed for %s' % (peptide_id,))
+            frc_nx_log.warning('\tPrediction failed for %s' % (peptide_id,))
             fail_count += 1
 
     fail_percent = fail_count / peptide_count * 100
@@ -757,10 +760,6 @@ def heap_windowing(enrich_list, margin, window_cutoff):
     """
     assert(margin > 0 and margin < 1)
     assert(window_cutoff > 1)
-
-    # If we get a tiny enrich_list, give up.
-    if len(enrich_list) < 2:
-        return (False, False, False, False, False)
 
     enrichment_window = []
     golden_window = False
@@ -791,14 +790,22 @@ def heap_windowing(enrich_list, margin, window_cutoff):
         if len(enrichment_window) >= window_cutoff:
             golden_window = enrichment_window
 
-
-    if golden_window:
+    # If we got a tiny enrich_list, give up.
+    if golden_window and len(enrich_list) > 1:
         guess = sum(golden_window) / float(len(golden_window))
 
-    variance_n = M2 / n
-    variance = M2 / (n - 1)
-
-    return (golden_window, guess, mean, variance, variance_n)
+    try:
+        variance_n = M2 / n
+        variance = M2 / (n - 1)
+    except ZeroDivisionError:
+        variance = False
+        variance_n = False
+        
+    return {'golden_window': golden_window,
+            'guess': guess,
+            'mean': mean,
+            'variance': variance,
+            'variance_n': variance_n }
 
 
 def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
@@ -819,28 +826,31 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
         peptide_count = 0
         for peptide_id in dta_select_data[protein_id]['peptides'].iterkeys():
             peptide_count += 1
-            if 'percent' in peptide_predictions[peptide_id]:
-                enrich_list.append(peptide_predictions[peptide_id]['percent'])
+            if 'guess' in peptide_predictions[peptide_id]:
+                enrich_list.append(peptide_predictions[peptide_id]['guess'])
 
         # Print the whole list for debugging
         prot_log.debug('\tRaw: %s' % (enrich_list, ))
 
-        golden_window, guess, mean, variance, variance_n = heap_windowing(enrich_list=enrich_list,
-                                                                          margin=0.1,
-                                                                          window_cutoff=2)
+        predictions_dict = heap_windowing(enrich_list=enrich_list,
+                                          margin=0.1,
+                                          window_cutoff=2)
+
+        print(predictions_dict)
 
         # Did we get any winners? If so, hooray!
-        if golden_window:
-            protein_predictions[protein_id] = { 'mean': mean,
-                                                'prediction': guess,
-                                                'num_samples': len(enrich_list),
-                                                'variance': variance,
-                                                'variance_n': variance_n }
+        if predictions_dict['golden_window']:
+            # Merge in our dict
+            protein_predictions[protein_id] = dict()
+            for key, value in predictions_dict.iteritems():
+                protein_predictions[protein_id][key] = value
+            protein_predictions[protein_id]['num_samples'] = len(enrich_list)
 
-            prot_log.debug('\tWindow: %s items, %s' % (len(golden_window), golden_window))
-            prot_log.debug('\tChoosing: %0.2f%%' % (guess * 100,))
+            prot_log.debug('\tWindow: %s items, %s' % (len(predictions_dict['golden_window']),
+                                                       predictions_dict['golden_window']))
+            prot_log.debug('\tChoosing: %0.2f%%' % (predictions_dict['guess'] * 100,))
         else:
-            prot_log.warn('\tPrediction failed for %s' % (peptide_id,))
+            prot_log.warning('\tPrediction failed for %s' % (peptide_id,))
             fail_count += 1
 
     fail_percent = fail_count / protein_count * 100
@@ -888,7 +898,7 @@ def generate_output(dta_select_data, peptide_dict,
             peptide_dict[key][enrich_key] = enrich_val
 
     # Dictionary keys for our output results.
-    output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent']
+    output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'guess']
 
     # First, let's make a tiny summary table.
     # Note: This uses DataTables -- if the number of columns changes, the table may break.
@@ -946,14 +956,17 @@ def generate_output(dta_select_data, peptide_dict,
     output_log.info('Generating protein output data...')
 
     for key in dta_select_data.keys():
-        dta_select_data[key]['id'] = key # Again, merege in to same dict level for ease later.
+        dta_select_data[key]['id'] = key # Again, merge in to same dict level for ease later.
 
         # Merge in any of the protein_predictions, overwrite collisions (!)
-        for enrich_key, enrich_val in protein_predictions[key].iteritems():
-            dta_select_data[key]['metadata'][enrich_key] = enrich_val
+        try:
+            for enrich_key, enrich_val in protein_predictions[key].iteritems():
+                dta_select_data[key]['metadata'][enrich_key] = enrich_val
+        except KeyError:
+            output_log.warning('No protein key: %s' % (key,))
 
     # Dictionary keys for our output results.
-    prot_output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'percent', 'prediction']
+    prot_output_keys = ['id', 'sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
 
     with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, prot_output_keys, extrasaction='ignore')
@@ -967,7 +980,7 @@ def generate_output(dta_select_data, peptide_dict,
     output_log.debug('Protein CSV/TSV sucessfully generated.')
 
 
-    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count', 'prediction']
+    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count', 'guess']
 
     with open('.html/protein_table_head.html') as protein_head:
         protein_table_head = protein_head.read()
