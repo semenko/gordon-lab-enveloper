@@ -372,17 +372,19 @@ def main():
         make_peak_graphs(peptide_dict, isodist_results, options.num_threads)
 
     # Choose winners: rank predictions and choose the best FRC_NX value
-    peptide_predictions, peptide_fail_count = pick_FRC_NX(peptide_dict, isodist_results)
+    peptide_predictions, peptide_fail_count, peptide_fail_percent = pick_FRC_NX(peptide_dict, isodist_results)
 
     del isodist_results  # This is huge.
 
     # Choose protein-level predictions given the peptides
-    protein_predictions, protein_fail_count = pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions)
+    protein_predictions, protein_fail_count, protein_fail_percent = pick_protein_enrichment(dta_select_data, peptide_dict,
+                                                                                            peptide_predictions)
 
     # Save output as CSV & HTML.
     generate_output(dta_select_data, peptide_dict,
-                    peptide_predictions, peptide_fail_count,
-                    protein_predictions, protein_fail_count, logfilename)
+                    peptide_predictions, peptide_fail_count, peptide_fail_percent,
+                    protein_predictions, protein_fail_count, protein_fail_percent,
+                    logfilename, input_directory)
 
     # Cleanup.
     if USE_DRMAA:
@@ -741,11 +743,12 @@ def pick_FRC_NX(peptide_dict, isodist_results):
             frc_nx_log.warn('\tPrediction failed for %s' % (peptide_id,))
             fail_count += 1
 
+    fail_percent = fail_count / peptide_count * 100
     frc_nx_log.info('Prediction failed for %s out of %s peptides (%0.2f%%)' %
-                    (fail_count, peptide_count, (fail_count / peptide_count * 100)))
+                    (fail_count, peptide_count, fail_percent))
 
     frc_nx_log.info('Peptide enrichment percentages chosen successfully.')
-    return (peptide_predictions, fail_count)
+    return (peptide_predictions, fail_count, fail_percent)
 
 
 def heap_windowing(enrich_list, margin, window_cutoff):
@@ -840,18 +843,17 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
             prot_log.warn('\tPrediction failed for %s' % (peptide_id,))
             fail_count += 1
 
+    fail_percent = fail_count / protein_count * 100
     prot_log.info('Prediction failed for %s out of %s proteins (%0.2f%%)' %
-                  (fail_count, protein_count, (fail_count / protein_count * 100)))
+                  (fail_count, protein_count, fail_percent))
     
-
-
     prot_log.info('Protein enrichment predictions complete.')
-    return (protein_predictions, fail_count)
+    return (protein_predictions, fail_count, fail_percent)
 
 def generate_output(dta_select_data, peptide_dict,
-                    peptide_predictions, peptide_fail_count,
-                    protein_predictions, protein_fail_count,
-                    results_path):
+                    peptide_predictions, peptide_fail_count, peptide_fail_percent,
+                    protein_predictions, protein_fail_count, protein_fail_percent,
+                    results_path, input_directory):
     """
     Save a final output summary of our predictions. This outputs as CSV & HTML files.
     """
@@ -1001,13 +1003,13 @@ def generate_output(dta_select_data, peptide_dict,
     index_template_keys = {
         'run_id': results_path,
         'run_date': datetime.datetime.now().strftime("%m/%d/%Y"),
-        'input_path': 'INPUT_PATH_HTML_OMG_LONG_DIR/',
+        'input_directory': input_directory,
         'protein_count': len(dta_select_data.keys()),
         'protein_success': len(dta_select_data.keys()) - protein_fail_count,
-        'protein_percent': 'NNN',
+        'protein_percent': 100 - protein_fail_percent,
         'peptide_count': len(peptide_dict.keys()),
         'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
-        'peptide_percent': 'NNN',
+        'peptide_percent': 100 - peptide_fail_percent,
         }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))
