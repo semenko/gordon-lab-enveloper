@@ -966,12 +966,11 @@ def generate_output(dta_select_data, peptide_dict,
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-    # Dictionary keys for our output results.
-    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
-    prot_prediction_keys = ['guess', 'variance', 'variance_n']
 
     # A function for our protein HTML output
     def write_protein_results(table_head, out_handle, full_details=False):
+        prediction_keys = ['guess', 'variance', 'variance_n']
+        prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
         # Highlight the top navbar
         if full_details:
             out_handle.write(header_template.safe_substitute(protein_details='active'))
@@ -980,18 +979,28 @@ def generate_output(dta_select_data, peptide_dict,
         # This is a table-specific header, since column counts & titles change.
         out_handle.write(table_head)
         for key in dta_select_data.iterkeys():
-            print('<tr><td>' + key + '</td><td>', file=out_handle) # Protein Key
-            print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=out_handle)
-            print('</td><td>', file=out_handle)
-            # Beautify the output
-            guess = protein_predictions[key].get('guess')
-            if guess:
-                print('</td><td>'.join([str(round(protein_predictions[key].get(x, '') * 100, 2)) for x in prot_prediction_keys]), file=out_handle)
-            else:
-                print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
-            if full_details:
+            # Without full details, we print protin metadata
+            if not full_details:
+                print('<tr><td>' + key + '</td><td>', file=out_handle) # Protein Key
+                print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=out_handle)
                 print('</td><td>', file=out_handle)
-                print('</td><td>'.join([str(protein_predictions[key].get(['guess'], '') for ]), file=out_handle)                
+                # Beautify the output
+                guess = protein_predictions[key].get('guess')
+                if guess:
+                    print('</td><td>'.join([str(round(protein_predictions[key][x] * 100, 2)) for x in prediction_keys]), file=out_handle)
+                else:
+                    print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
+            else:
+                # Print all individual peptides.
+                print('</td></tr>', file=out_handle)
+                peptides_from_key = dta_select_data[key]['peptides']
+                for peptide_id in peptides_from_key.iterkeys():
+                    print('<tr><td>' + key + '</td><td>' + peptides_from_key[peptide_id]['sequence'] + '</td><td>', file=out_handle)
+                    peptide_guess = peptide_predictions[peptide_id].get('guess')
+                    if peptide_guess:
+                        print('</td><td>'.join([str(round(peptide_predictions[peptide_id][x] * 100, 2)) for x in prediction_keys]), file=out_handle)
+                    else:
+                        print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
             print('</td></tr>', file=out_handle)
         print('</tbody></table>', file=out_handle)
         out_handle.write(footer)
