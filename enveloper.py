@@ -943,8 +943,6 @@ def generate_output(dta_select_data, peptide_dict,
 
     output_log.debug('Peptide HTML successfully generated.')
 
-
-
     # Add the isodist guesses for our output
     peptide_predict_keys.extend(all_isodist_guesses)
 
@@ -969,6 +967,55 @@ def generate_output(dta_select_data, peptide_dict,
     output_log.info('Generating protein output data...')
 
     # Dictionary keys for our output results.
+    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
+    prot_prediction_keys = ['guess', 'variance', 'variance_n']
+
+    # A function for our protein HTML output
+    def write_protein_results(table_head, out_handle, full_details=False):
+        # Highlight the top navbar
+        if full_details:
+            out_handle.write(header_template.safe_substitute(protein_details='active'))
+        else:
+            out_handle.write(header_template.safe_substitute(protein_active='active'))
+        # This is a table-specific header, since column counts & titles change.
+        out_handle.write(table_head)
+        for key in dta_select_data.iterkeys():
+            print('<tr><td>' + key + '</td><td>', file=out_handle) # Protein Key
+            print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=out_handle)
+            print('</td><td>', file=out_handle)
+            # Beautify the output
+            guess = protein_predictions[key].get('guess')
+            if guess:
+                print('</td><td>'.join([str(round(protein_predictions[key].get(x, '') * 100, 2)) for x in prot_prediction_keys]), file=out_handle)
+            else:
+                print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
+            if full_details:
+                print('</td><td>', file=out_handle)
+                print('</td><td>'.join([str(protein_predictions[key].get(['guess'], '') for ]), file=out_handle)                
+            print('</td></tr>', file=out_handle)
+        print('</tbody></table>', file=out_handle)
+        out_handle.write(footer)
+
+    # Write the protein-level summary page
+    with open('.html/protein_summary_table_head.html') as protein_head:
+        protein_summary_table_head = protein_head.read()
+    with open('results/%s/%s' % (results_path, 'protein_summary.html'), 'w') as by_protein:
+        write_protein_results(table_head=protein_summary_table_head,
+                              out_handle=by_protein,
+                              full_details=False)
+
+    # And the more detailed page
+    with open('.html/protein_table_head.html') as protein_head:
+        protein_table_head = protein_head.read()
+    with open('results/%s/%s' % (results_path, 'protein_details.html'), 'w') as by_protein:
+        write_protein_results(table_head=protein_table_head,
+                              out_handle=by_protein,
+                              full_details=True)
+
+    output_log.debug('Protein HTML successfully generated.')
+
+
+    # Generate CSV/TSV output
     prot_output_keys = ['sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
 
     with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
@@ -980,39 +1027,12 @@ def generate_output(dta_select_data, peptide_dict,
         tsv_out = csv.DictWriter(tsvout, prot_output_keys, extrasaction='ignore', dialect=csv.excel_tab)
         tsv_out.writeheader()
         tsv_out.writerows(dta_select_data.itervalues())
+
     output_log.debug('Protein CSV/TSV sucessfully generated.')
+    
 
 
-    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
-    prot_prediction_keys = ['guess', 'variance', 'variance_n']
 
-    with open('.html/protein_table_head.html') as protein_head:
-        protein_table_head = protein_head.read()
-    with open('results/%s/%s' % (results_path, 'protein_details.html'), 'w') as by_protein:
-        by_protein.write(header_template.safe_substitute(protein_details='active'))
-        by_protein.write(protein_table_head)
-        for key in dta_select_data.iterkeys():
-            print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
-            print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=by_protein)
-            print('</td></tr>', file=by_protein)
-        print('</tbody></table>', file=by_protein)
-        by_protein.write(footer)
-
-    # And the protein-level summary page
-    with open('.html/protein_summary_table_head.html') as protein_head:
-        protein_summary_table_head = protein_head.read()
-    with open('results/%s/%s' % (results_path, 'protein_summary.html'), 'w') as by_protein:
-        by_protein.write(header_template.safe_substitute(protein_active='active'))
-        by_protein.write(protein_summary_table_head)
-        for key in dta_select_data.iterkeys():
-            print('<tr><td>' + key + '</td><td>', file=by_protein) # Protein Key
-            print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=by_protein)
-            print('</td><td>', file=by_protein)
-            # This isn't great, but we provide raw values in the CSV/TSV output.
-            print('</td><td>'.join([str(round(protein_predictions[key].get(x, '') * 100, 2)) for x in prot_prediction_keys]), file=by_protein)
-            print('</td></tr>', file=by_protein)
-        print('</tbody></table>', file=by_protein)
-        by_protein.write(footer)
 
     output_log.info('Finalizing HTML output statistics...')
     # And the index template:
