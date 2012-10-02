@@ -948,16 +948,16 @@ def generate_output(dta_select_data, peptide_dict,
     # Open & write our CSV files
     # Protip: Write to sys.stderr if you're debugging this.
     with open('results/%s/%s' % (results_path, 'all_peptides.csv'), 'wb') as csvout:
-        csv_out = csv.DictWriter(csvout, peptide_dict_keys + peptide_predict_keys, extrasaction='ignore')
+        csv_out = csv.DictWriter(csvout, ['pep_key'] + peptide_dict_keys + peptide_predict_keys, extrasaction='ignore')
         csv_out.writeheader()
         for key in peptide_dict.iterkeys():
-            csv_out.writerow(dict(peptide_dict[key].items() + peptide_predictions[key].items()))
+            csv_out.writerow(dict([('pep_key', key)] + peptide_dict[key].items() + peptide_predictions[key].items()))
     # And TSV, too.
     with open('results/%s/%s' % (results_path, 'all_peptides.tsv'), 'wb') as tsvout:
-        tsv_out = csv.DictWriter(tsvout, peptide_dict_keys + peptide_predict_keys, extrasaction='ignore', dialect=csv.excel_tab)
+        tsv_out = csv.DictWriter(tsvout, ['pep_key'] + peptide_dict_keys + peptide_predict_keys, extrasaction='ignore', dialect=csv.excel_tab)
         tsv_out.writeheader()
         for key in peptide_dict.iterkeys():
-            tsv_out.writerow(dict(peptide_dict[key].items() + peptide_predictions[key].items()))
+            tsv_out.writerow(dict([('pep_key', key)] + peptide_dict[key].items() + peptide_predictions[key].items()))
     output_log.debug('Peptide CSV/TSV sucessfully generated.')
 
     #### End of Peptide data generation
@@ -965,10 +965,11 @@ def generate_output(dta_select_data, peptide_dict,
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
+    prot_prediction_keys = ['guess', 'variance', 'variance_n']
+    prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
+
     # A function for our protein HTML output
     def write_protein_results(table_head, out_handle, full_details=False):
-        prediction_keys = ['guess', 'variance', 'variance_n']
-        prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
         # Highlight the top navbar
         if full_details:
             out_handle.write(header_template.safe_substitute(protein_details='active'))
@@ -985,7 +986,7 @@ def generate_output(dta_select_data, peptide_dict,
                 # Beautify the output
                 guess = protein_predictions[key].get('guess')
                 if guess:
-                    print('</td><td>'.join([str(round(protein_predictions[key][x] * 100, 2)) for x in prediction_keys]), file=out_handle)
+                    print('</td><td>'.join([str(round(protein_predictions[key][x] * 100, 2)) for x in prot_prediction_keys]), file=out_handle)
                 else:
                     print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
             else:
@@ -996,7 +997,7 @@ def generate_output(dta_select_data, peptide_dict,
                     print('<tr><td>' + key + '</td><td>' + peptides_from_key[peptide_id]['sequence'] + '</td><td>', file=out_handle)
                     peptide_guess = peptide_predictions[peptide_id].get('guess')
                     if peptide_guess:
-                        print('</td><td>'.join([str(round(peptide_predictions[peptide_id][x] * 100, 2)) for x in prediction_keys]), file=out_handle)
+                        print('</td><td>'.join([str(round(peptide_predictions[peptide_id][x] * 100, 2)) for x in prot_prediction_keys]), file=out_handle)
                     else:
                         print('<i style="color:red">Failed</i></td><td></td><td>', file=out_handle)
             print('</td></tr>', file=out_handle)
@@ -1025,14 +1026,16 @@ def generate_output(dta_select_data, peptide_dict,
     prot_output_keys = ['sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
 
     with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
-        csv_out = csv.DictWriter(csvout, prot_output_keys, extrasaction='ignore')
+        csv_out = csv.DictWriter(csvout, ['prot_key'] + prot_metadata_keys + prot_prediction_keys, extrasaction='ignore')
         csv_out.writeheader()
-        csv_out.writerows(dta_select_data.itervalues())
+        for key in dta_select_data.iterkeys():
+            csv_out.writerow(dict([('prot_key', key)] + dta_select_data[key]['metadata'].items() + protein_predictions[key].items()))
     # And TSV, too.
     with open('results/%s/%s' % (results_path, 'all_proteins.tsv'), 'wb') as tsvout:
-        tsv_out = csv.DictWriter(tsvout, prot_output_keys, extrasaction='ignore', dialect=csv.excel_tab)
+        tsv_out = csv.DictWriter(tsvout, ['prot_key'] + prot_metadata_keys + prot_prediction_keys, extrasaction='ignore', dialect=csv.excel_tab)
         tsv_out.writeheader()
-        tsv_out.writerows(dta_select_data.itervalues())
+        for key in dta_select_data.iterkeys():
+            tsv_out.writerow(dict([('prot_key', key)] + dta_select_data[key]['metadata'].items() + protein_predictions[key].items()))
 
     output_log.debug('Protein CSV/TSV sucessfully generated.')
 
