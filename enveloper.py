@@ -280,8 +280,6 @@ def main():
     except OSError:
         parser.error('Results directory not writeable or already exists.')
 
-
-
     # I hate mid-program imports like this...
     if USE_DRMAA:
         import drmaa
@@ -649,7 +647,7 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads, results_path):
     FYI: Threadsafety here is not 100% certain. This may break at high thread numbers (>=24).
       Although I think that bug was fixed in Python >=2.7.
     """
-    
+
     graph_log = logging.getLogger('make_peak_graphs')
     graph_log.info('Generating graphs. This will take some time.')
 
@@ -697,7 +695,6 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     frc_nx_log.info('Determining optimal peptide enrichment percentages.')
     peptide_count = len(peptide_dict.keys())
     frc_nx_log.info('Predictions were made for %s peptides.' % (peptide_count,))
-
 
     # I'm not sure what the best way to settle on a prediction is. The options include:
     #  - Direct comparsions to raw peaks (ignoring the isodist CHI_SQ scores)
@@ -808,12 +805,13 @@ def heap_windowing(enrich_list, margin, window_cutoff):
     except ZeroDivisionError:
         variance = False
         variance_n = False
-        
+
     return {'golden_window': golden_window,
             'guess': guess,
             'mean': mean,
             'variance': variance,
-            'variance_n': variance_n }
+            'variance_n': variance_n
+            }
 
 
 def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
@@ -864,9 +862,10 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
     fail_percent = fail_count / protein_count * 100
     prot_log.info('Prediction failed for %s out of %s proteins (%0.2f%%)' %
                   (fail_count, protein_count, fail_percent))
-    
+
     prot_log.info('Protein enrichment predictions complete.')
     return (protein_predictions, fail_count, fail_percent)
+
 
 def generate_output(dta_select_data, peptide_dict,
                     peptide_predictions, peptide_fail_count, peptide_fail_percent,
@@ -888,7 +887,7 @@ def generate_output(dta_select_data, peptide_dict,
     with open('.html/header.html') as header_fh, open('.html/footer.html') as footer_fh:
         header_template = string.Template(header_fh.read())
         footer = footer_fh.read()
- 
+
     #### Peptide raw data output
     output_log.info('Generating peptide output data...')
 
@@ -898,7 +897,7 @@ def generate_output(dta_select_data, peptide_dict,
 
    # The "guess_0" -> 100 columns (for a much larger table)
     all_isodist_guesses = ['guess_' + str(percent) for percent in N_PERCENT_RANGE]
-    
+
     # A function for peptide result printing to reduce repetitive code
     def write_peptide_results(table_head, out_handle, full_details=False):
         # Highlight the top navbar
@@ -924,7 +923,7 @@ def generate_output(dta_select_data, peptide_dict,
             print('</td></tr>', file=out_handle)
         print('</tbody></table>', file=out_handle)
         out_handle.write(footer)
-        
+
     # Print the summary table
     with open('.html/peptide_summary_table_head.html') as summary_head:
         peptide_summary_table_head = summary_head.read()
@@ -966,7 +965,6 @@ def generate_output(dta_select_data, peptide_dict,
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-
     # A function for our protein HTML output
     def write_protein_results(table_head, out_handle, full_details=False):
         prediction_keys = ['guess', 'variance', 'variance_n']
@@ -981,7 +979,7 @@ def generate_output(dta_select_data, peptide_dict,
         for key in dta_select_data.iterkeys():
             # Without full details, we print protin metadata
             if not full_details:
-                print('<tr><td>' + key + '</td><td>', file=out_handle) # Protein Key
+                print('<tr><td>' + key + '</td><td>', file=out_handle)  # Protein Key
                 print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=out_handle)
                 print('</td><td>', file=out_handle)
                 # Beautify the output
@@ -1023,7 +1021,6 @@ def generate_output(dta_select_data, peptide_dict,
 
     output_log.debug('Protein HTML successfully generated.')
 
-
     # Generate CSV/TSV output
     prot_output_keys = ['sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
 
@@ -1038,10 +1035,6 @@ def generate_output(dta_select_data, peptide_dict,
         tsv_out.writerows(dta_select_data.itervalues())
 
     output_log.debug('Protein CSV/TSV sucessfully generated.')
-    
-
-
-
 
     output_log.info('Finalizing HTML output statistics...')
     # And the index template:
@@ -1049,22 +1042,20 @@ def generate_output(dta_select_data, peptide_dict,
         index_template = string.Template(index_fh.read())
 
     # Metadata for the index page.
-    index_template_keys = {
-        'run_id': results_path,
-        'run_date': datetime.datetime.now().strftime("%m/%d/%Y"),
-        'input_directory': input_directory,
-        'protein_count': len(dta_select_data.keys()),
-        'protein_success': len(dta_select_data.keys()) - protein_fail_count,
-        'protein_percent': 100 - protein_fail_percent,
-        'peptide_count': len(peptide_dict.keys()),
-        'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
-        'peptide_percent': 100 - peptide_fail_percent,
-        }
+    index_template_keys = {'run_id': results_path,
+                           'run_date': datetime.datetime.now().strftime("%m/%d/%Y"),
+                           'input_directory': input_directory,
+                           'protein_count': len(dta_select_data.keys()),
+                           'protein_success': len(dta_select_data.keys()) - protein_fail_count,
+                           'protein_percent': 100 - protein_fail_percent,
+                           'peptide_count': len(peptide_dict.keys()),
+                           'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
+                           'peptide_percent': 100 - peptide_fail_percent,
+                           }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))
         index.write(index_template.substitute(index_template_keys))
         index.write(footer)
-
 
     output_log.info('Results successfully written.')
     return True
