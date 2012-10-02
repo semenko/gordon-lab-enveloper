@@ -661,6 +661,7 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads, results_path):
             # Dir might already exist. If it's unwriteable, we'll FATAL it later.
             pass
 
+    graph_log.debug('Generating multiprocessing pool tasks.')
     pool = multiprocessing.Pool(num_threads)
     tasks = [(key, val, isodist_results[key], results_path) for key, val in peptide_dict.iteritems()]
     results = []
@@ -1243,7 +1244,7 @@ def read_isodist_results(input_path, peptide_dict, skip_graphs):
 
     for peptide_key, n_percent in [(x, y) for x in peptide_dict.iterkeys() for y in N_PERCENT_RANGE]:
         progress += 1
-        read_logger.debug('%0.2f%% complete. On key: %s, %s%%' % (progress / total, peptide_key, n_percent))
+        read_logger.debug('%0.2f%% complete. On key: %s, %s%%' % ((progress / total) * 100, peptide_key, n_percent))
 
         # Make the [peptide_key] dict, if it doesn't exist.
         isodist_results.setdefault(peptide_key, {})
