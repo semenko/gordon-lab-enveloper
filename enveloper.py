@@ -375,7 +375,7 @@ def main():
     if options.skip_graphs:
         log_main.warning('Skipping peak graph generation as requested. (Graphs may be stale.)')
     else:
-        make_peak_graphs(peptide_dict, isodist_results, options.num_threads, results_path)
+        make_peak_graphs(peptide_dict, isodist_results, results_path)
 
     # Choose winners: rank predictions and choose the best FRC_NX value
     peptide_predictions, peptide_fail_count, peptide_fail_percent = pick_FRC_NX(peptide_dict, isodist_results)
@@ -638,20 +638,18 @@ def extract_MS1_peaks(dta_select_data, ms1_data, ms2_to_ms1):
     return peptide_dict
 
 
-def make_peak_graphs(peptide_dict, isodist_results, num_threads, results_path):
+def make_peak_graphs(peptide_dict, isodist_results, results_path):
     """
-    Make some graphs of the peaks. Now featuring parallelism!
+    Make some graphs of the peaks.
 
-    Note: These threads take a *lot* of RAM. Like 8gb/thread.
-
-    FYI: Threadsafety here is not 100% certain. This may break at high thread numbers (>=24).
-      Although I think that bug was fixed in Python >=2.7.
+    You could try this with multiprocessing -- I used map_async here for a while, but it seemed to
+    unnecessarily complicate things and periodically deadlock. I don't think there's any real
+    speedup, given the Python GIL.
     """
 
     graph_log = logging.getLogger('make_peak_graphs')
-    graph_log.info('Generating graphs. This will take some time.')
 
-    graph_log.debug('Making output directories in results/%s/graphs/' % (results_path, ))
+    graph_log.debug('Making graph output directories in results/%s/graphs/' % (results_path, ))
     # Let's create output directories for graphs
     for peptide_key in peptide_dict.iterkeys():
         try:
@@ -661,30 +659,14 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads, results_path):
             # Dir might already exist. If it's unwriteable, we'll FATAL it later.
             pass
 
-    graph_log.debug('Generating multiprocessing pool tasks.')
-    pool = multiprocessing.Pool(num_threads)
+    graph_log.info('Generating graphs. This will take some time.')
     tasks = [(key, val, isodist_results[key], results_path) for key, val in peptide_dict.iteritems()]
-    results = []
-
-    chunk_size = len(tasks) // num_threads
-    graph_log.debug('Task size is %s with %s threads' % (len(tasks), num_threads))
-    graph_log.debug('Using chunk_size of %s' % (chunk_size,))
-
-    # TODO: Use error_callback?
-    r = pool.map_async(_peak_graph_cmd, tasks, chunk_size, callback=results.append)
-    graph_log.debug('Dispatched jobs. Now waiting for return.')
-    # See previous comment RE .get() vs .wait()
-    r.get(999999)  # Block until our pool returns
-
-    try:
-        if len(results[0]) != len(tasks):
-            # You could take a set intersection and see what didn't return.
-            raise FatalError('A graphing thread failed!')
-    except IndexError:
-        raise FatalError('A graphing thread failed: Make sure the ./graphs/ output directories are writeable.')
+    for key, val in peptide_dict.iteritems():
+        graph_log.debug('\tGenerating graph for: %s' % (key,))
+        # This shouldn't fail, unless perhaps the output directories aren't writeable?
+        _peak_graph_cmd(key, val, isodist_results[key], results_path)
 
     graph_log.info('Graphs generated successfully.')
-
     return True
 
 
@@ -1066,17 +1048,18 @@ def generate_output(dta_select_data, peptide_dict,
     return True
 
 
-def _peak_graph_cmd(task):
+def _peak_graph_cmd(peptide_key, peptide_value, isodist_results, results_path):
     """
-    Generate peak graphs as part of the multiprocessing/map_async command
+    Generate peak graphs from make_peak_graphs.
     """
-    peptide_key, peptide_value, isodist_results, results_path = task
-
-    graph_thread_log = logging.getLogger('_peak_graph_cmd')
-    graph_thread_log.debug('Graphing %s' % peptide_key)
-
     # Not that this app is secure, but just so we don't break things, sanitize some outputs.
     valid_chars = "-_.()%s%s" % (string.ascii_letters, string.digits)
+
+    # Semi-sanitized. Not secure, but we aren't likely to accidentally break things if peptide_key is insane.
+    safer_key = ''.join(c for c in peptide_key if c in valid_chars)
+
+    # Our m/z peaks don't change through the loop. Just the predictions.
+    m, z = zip(*peptide_value['peaks'])
 
     for n_percent in N_PERCENT_RANGE:
         # Set up our figure
@@ -1103,8 +1086,6 @@ def _peak_graph_cmd(task):
 
         # Add our actual data (we need to add a Plot to our Figure)
         ax = fig.add_subplot(111)
-        #noinspection PyTupleAssignmentBalance
-        m, z = zip(*peptide_value['peaks'])
         ax.plot(m, z, 'r-', linewidth=0.5)
 
         # Get the m/z data.
@@ -1116,13 +1097,11 @@ def _peak_graph_cmd(task):
         #ax.autoscale_view() # I really don't know what this does.
         ax.grid(True)
 
-        # Semi-sanitized. Not secure, but we aren't likely to accidentally break things if peptide_key is insane.
-        safer_key = ''.join(c for c in peptide_key if c in valid_chars)
-
         matplotlib.pyplot.savefig("results/%s/graphs/%s/%s.png" % (results_path, safer_key, n_percent))
 
         # I'm not sure if this matters for memory usage.
         # Matplotlib uses a *lot* of RAM and nothing seems to reduce it.
+        fig.clf()
         matplotlib.pyplot.close('all')
 
     return True
