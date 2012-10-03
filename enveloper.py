@@ -1090,7 +1090,7 @@ def _peak_graph_cmd(peptide_key, peptide_value, isodist_results, results_path):
 
         # Get the m/z data.
         # Note: These are pre-filtered to exclude all pairs with intensity <=0, as they mess w/ the graph.
-        isodist_m = [m / float(peptide_value['charge']) for m in isodist_data['peak_fit'][0]]
+        isodist_m = [m_2 / float(peptide_value['charge']) for m_2 in isodist_data['peak_fit'][0]]
         isodist_z = isodist_data['peak_fit'][1]
 
         ax.plot(isodist_m, isodist_z, 'b-.', linewidth=1.2)
