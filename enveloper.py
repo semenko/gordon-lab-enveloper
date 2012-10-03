@@ -672,6 +672,7 @@ def make_peak_graphs(peptide_dict, isodist_results, num_threads, results_path):
 
     # TODO: Use error_callback?
     r = pool.map_async(_peak_graph_cmd, tasks, chunk_size, callback=results.append)
+    graph_log.debug('Dispatched jobs. Now waiting for return.')
     # See previous comment RE .get() vs .wait()
     r.get(999999)  # Block until our pool returns
 
@@ -1071,7 +1072,7 @@ def _peak_graph_cmd(task):
     """
     peptide_key, peptide_value, isodist_results, results_path = task
 
-    graph_thread_log = logging.getLogger('_peak_graphs_cmd')
+    graph_thread_log = logging.getLogger('_peak_graph_cmd')
     graph_thread_log.debug('Graphing %s' % peptide_key)
 
     # Not that this app is secure, but just so we don't break things, sanitize some outputs.
