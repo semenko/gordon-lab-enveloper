@@ -367,7 +367,7 @@ def main():
                 cPickle.dump(isodist_results, pickle_cache)
     else:
         # We got cached isodist results. Cool!
-        log_main.warning('Using cached data: If you\'ve re-run isodist, the cache will be stale!')
+        log_main.warning('Using cached isodist data: If you\'ve re-run isodist, the cache will be stale!')
 
     log_main.info("Reading isodist results took: %0.2f secs." % (time.time() - itime))
 
