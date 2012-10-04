@@ -1034,10 +1034,10 @@ def generate_output(dta_select_data, peptide_dict,
                            'input_directory': input_directory,
                            'protein_count': len(dta_select_data.keys()),
                            'protein_success': len(dta_select_data.keys()) - protein_fail_count,
-                           'protein_percent': 100 - protein_fail_percent,
+                           'protein_percent': round(100 - protein_fail_percent, 2),
                            'peptide_count': len(peptide_dict.keys()),
                            'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
-                           'peptide_percent': 100 - peptide_fail_percent,
+                           'peptide_percent': round(100 - peptide_fail_percent, 2),
                            }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))
