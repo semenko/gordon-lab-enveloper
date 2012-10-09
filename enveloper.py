@@ -1026,6 +1026,14 @@ def generate_output(dta_select_data, peptide_dict,
     with open('.html/index_templ.html') as index_fh:
         index_template = string.Template(index_fh.read())
 
+    # Calculate some quick protein & peptide overall percentages
+    protein_mean = 0
+    protein_variance = 0
+    protein_variance_pop = 0
+    peptide_mean = 0
+    peptide_variance = 0
+    peptide_variance_pop = 0
+
     # Metadata for the index page.
     index_template_keys = {'run_id': results_path,
                            'run_date': datetime.datetime.now().strftime("%m/%d/%Y"),
@@ -1036,6 +1044,12 @@ def generate_output(dta_select_data, peptide_dict,
                            'peptide_count': len(peptide_dict.keys()),
                            'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
                            'peptide_percent': round(100 - peptide_fail_percent, 2),
+                           'protein_mean': protein_mean,
+                           'protein_variance': protein_variance,
+                           'protein_variance_pop': protein_variance_pop,
+                           'peptide_mean': peptide_mean,
+                           'peptide_variance': peptide_variance,
+                           'peptide_variance_pop': peptide_variance_pop,
                            }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))

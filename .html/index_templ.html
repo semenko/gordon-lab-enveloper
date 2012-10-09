@@ -1,7 +1,7 @@
 <!-- MAIN //-->
 
     <div class="container"><div class="row">
-      <div class="span5">
+      <div class="span4">
         <h4>Run ID: ${run_id}</h4><br>
             <div class="bs-docs-example">
               <table class="table table-striped">
@@ -43,6 +43,32 @@
                 </table>
               </div>
         </div>
+        <div class="span4">
+          <h4>&nbsp;</h4><br>
+              <div class="bs-docs-example">
+                <table class="table table-striped">
+                  <tbody>
+                    <tr>
+                      <td>Mean Protein Enrichment</td>
+                      <td>${protein_mean}</td>
+                    </tr>
+                    <tr>
+                      <td><span class="icon-arrow-right"></span> Variance (Sample, Population)</td>
+                      <td>${protein_variance}, ${protein_variance_pop}</td>
+                    </tr>
+                    <tr>
+                      <td>Mean Peptide Enrichment</td>
+                      <td>${peptide_mean}</td>
+                    </tr>
+                    <tr>
+                      <td><span class="icon-arrow-right"></span> Variance (Sample, Population)</td>
+                      <td>${peptide_variance}, ${peptide_variance_pop}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+        </div>
+
         </div><hr></div>
     <div class="container">
 
