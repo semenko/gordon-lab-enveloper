@@ -30,7 +30,6 @@ import datetime
 import gc
 import hashlib
 import logging
-import math
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot
@@ -383,7 +382,7 @@ def main():
     del isodist_results  # This is huge.
 
     # Choose protein-level predictions given the peptides
-    protein_predictions, protein_fail_count, protein_fail_percent = pick_protein_enrichment(dta_select_data, peptide_dict,
+    protein_predictions, protein_fail_count, protein_fail_percent = pick_protein_enrichment(dta_select_data,
                                                                                             peptide_predictions)
 
     # Save output as CSV & HTML.
@@ -660,7 +659,7 @@ def make_peak_graphs(peptide_dict, isodist_results, results_path):
             pass
 
     graph_log.info('Generating graphs. This will take some time.')
-    tasks = [(key, val, isodist_results[key], results_path) for key, val in peptide_dict.iteritems()]
+
     for key, val in peptide_dict.iteritems():
         graph_log.debug('\tGenerating graph for: %s' % (key,))
         # This shouldn't fail, unless perhaps the output directories aren't writeable?
@@ -758,7 +757,9 @@ def heap_windowing(enrich_list, margin, window_cutoff):
     mean = 0.0
     M2 = 0.0
 
-    for enrich_guess in sorted(enrich_list):
+    # We must sort for out window
+    # And we remove two weird edge cases in isodist of returning /exactly/ 0.1 or 0.9.
+    for enrich_guess in sorted(filter(lambda x: x != 0.1 and x != 0.9, enrich_list)):
         # This is Welford's algorithm, as implemented by Knuth
         n += 1
         delta = enrich_guess - mean
@@ -798,7 +799,7 @@ def heap_windowing(enrich_list, margin, window_cutoff):
             }
 
 
-def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
+def pick_protein_enrichment(dta_select_data, peptide_predictions):
     """
     Pick protein-level enrichments given the peptide enrichment percentages.
     """
@@ -813,9 +814,7 @@ def pick_protein_enrichment(dta_select_data, peptide_dict, peptide_predictions):
     for protein_id in dta_select_data.iterkeys():
         enrich_list = []
         # peptide_count = dta_select_data[protein_id]['metadata']['seq_count']
-        peptide_count = 0
         for peptide_id in dta_select_data[protein_id]['peptides'].iterkeys():
-            peptide_count += 1
             if 'guess' in peptide_predictions[peptide_id]:
                 enrich_list.append(peptide_predictions[peptide_id]['guess'])
 
@@ -1007,8 +1006,6 @@ def generate_output(dta_select_data, peptide_dict,
     output_log.debug('Protein HTML successfully generated.')
 
     # Generate CSV/TSV output
-    prot_output_keys = ['sequence', 'charge', 'mz', 'n15mz', 'guess', 'guess']
-
     with open('results/%s/%s' % (results_path, 'all_proteins.csv'), 'wb') as csvout:
         csv_out = csv.DictWriter(csvout, ['prot_key'] + prot_metadata_keys + prot_prediction_keys, extrasaction='ignore')
         csv_out.writeheader()
@@ -1355,8 +1352,9 @@ def parse_mzXML(mzXML_file):
 
 def deploy_drmaa_job(job_command, job_parameters):
     """
-    Submit these jobs a DRMAA commands. WARNING: Not currently implemented.
-    If you needed expansive parallelism across machines, you could break out the isodist commands.
+    WARNING: Not currently implemented.
+
+    This is a skeleton for submitting isodist jobs as DRMAA commands.
     """
     global DRMAA_RUNNING_JOBS
 
@@ -1391,5 +1389,6 @@ if __name__ == '__main__':
         DRMAA_RUNNING_JOBS = []
         # Global variable to hold a session. This is a little dirty.
         DRMAA_SESSION = None
+        raise FatalError('Not implemented.')
 
     main()
