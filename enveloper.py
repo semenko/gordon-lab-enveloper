@@ -718,8 +718,9 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         frc_nx_log.debug('\tRaw: %s' %
                          ([isodist_data[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
+        # This is a +/- 3% margin with a minimum window of 4 values.
         predictions_dict = heap_windowing(enrich_list=enrich_list,
-                                          margin=0.01,
+                                          margin=0.03,
                                           window_cutoff=4)
 
         # Did we get any winners? If so, hooray!
