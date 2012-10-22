@@ -745,7 +745,8 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
 def heap_windowing(enrich_list, margin, window_cutoff):
     """
-    DESCR GOES HERE
+    DESCR GOES HERE    
+    We're returning the variance and median of the entire prediction (not just the window)
     """
     assert(margin > 0 and margin < 1)
     assert(window_cutoff > 1)
@@ -758,9 +759,11 @@ def heap_windowing(enrich_list, margin, window_cutoff):
     mean = 0.0
     M2 = 0.0
 
-    # We must sort for out window
+    # We must sort for our window
     # And we remove two weird edge cases in isodist of returning /exactly/ 0.1 or 0.9.
-    for enrich_guess in sorted(filter(lambda x: x != 0.1 and x != 0.9, enrich_list)):
+    # isodist is /extremely sticky/ around these values.
+    sorted_filtered_list = sorted(filter(lambda x: x != 0.1 and x != 0.9, enrich_list))
+    for enrich_guess in sorted_filtered_list:
         # This is Welford's algorithm, as implemented by Knuth
         n += 1
         delta = enrich_guess - mean
@@ -781,21 +784,27 @@ def heap_windowing(enrich_list, margin, window_cutoff):
         if len(enrichment_window) >= window_cutoff:
             golden_window = enrichment_window
 
-    # If we got a tiny enrich_list, give up.
+    # Make a guess (the mean) only if we have an enrich list >1
     if golden_window and len(enrich_list) > 1:
         guess = sum(golden_window) / float(len(golden_window))
 
-    try:
-        variance_n = M2 / n
-        variance = M2 / (n - 1)
-    except ZeroDivisionError:
-        variance = False
+    if n == 0:
         variance_n = False
-
+        median = False
+    else:
+        variance_n = M2 / n
+        # Compute the median
+        list_length = len(sorted_filtered_list)
+        if list_length % 2 == 0:
+            midpoint = list_length // 2
+            median = (sorted_filtered_list[midpoint] + sorted_filtered_list[midpoint - 1]) / 2.0
+        else:
+            median = sorted_filtered_list[(list_length - 1) // 2]
+        
     return {'golden_window': golden_window,
             'guess': guess,
             'mean': mean,
-            'variance': variance,
+            'median': median,
             'variance_n': variance_n
             }
 
@@ -877,7 +886,7 @@ def generate_output(dta_select_data, peptide_dict,
 
     # Dictionary keys for our output results.
     peptide_dict_keys = ['sequence', 'charge', 'mz', 'n15mz']
-    peptide_predict_keys = ['guess', 'variance', 'variance_n']
+    peptide_predict_keys = ['guess', 'median', 'variance_n']
 
    # The "guess_0" -> 100 columns (for a much larger table)
     all_isodist_guesses = ['guess_' + str(percent) for percent in N_PERCENT_RANGE]
@@ -949,7 +958,7 @@ def generate_output(dta_select_data, peptide_dict,
     #### Generate Protein data
     output_log.info('Generating protein output data...')
 
-    prot_prediction_keys = ['guess', 'variance', 'variance_n']
+    prot_prediction_keys = ['guess', 'median', 'variance_n']
     prot_metadata_keys = ['name', 'validated', 'spect_count', 'molwt', 'length', 'seq_cov', 'pI', 'seq_count']
 
     # A function for our protein HTML output
@@ -1029,10 +1038,10 @@ def generate_output(dta_select_data, peptide_dict,
     # Calculate some quick protein & peptide overall percentages
     protein_mean = 0
     protein_variance = 0
-    protein_variance_pop = 0
+    protein_median = 0
     peptide_mean = 0
     peptide_variance = 0
-    peptide_variance_pop = 0
+    peptide_median = 0
 
     # Metadata for the index page.
     index_template_keys = {'run_id': results_path,
@@ -1046,10 +1055,10 @@ def generate_output(dta_select_data, peptide_dict,
                            'peptide_percent': round(100 - peptide_fail_percent, 2),
                            'protein_mean': protein_mean,
                            'protein_variance': protein_variance,
-                           'protein_variance_pop': protein_variance_pop,
+                           'protein_median': protein_median,
                            'peptide_mean': peptide_mean,
                            'peptide_variance': peptide_variance,
-                           'peptide_variance_pop': peptide_variance_pop,
+                           'peptide_median': peptide_median,
                            }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))

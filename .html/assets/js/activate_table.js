@@ -9,4 +9,11 @@ $(document).ready(function() {
 	    "sLengthMenu": "_MENU_ records per page"
 	}
     } );
+    // Anything starting with a #
+    var anchor = document.URL.split('#')[1];
+    if (anchor) {
+	$('#example').dataTable().fnFilter(anchor);
+	// Set the search form, too. XSS here?
+	$('#example_filter input').val(anchor);
+    };
 } );
