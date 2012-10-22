@@ -42,10 +42,16 @@ $(document).ready(function() {
         "sDom": 'lfr<"giveHeight"t>ip'
     });
     // Anything starting with a #
-    var anchor = document.URL.split('#')[1];
-    if (anchor) {
-        $('#example').dataTable().fnFilter(anchor);
-        // Set the search form, too. XSS here?
-        $('#example_filter input').val(anchor);
+    function updateHashFilter() {
+        var anchor = document.URL.split('#')[1];
+        if (anchor) {
+            $('#example').dataTable().fnFilter(anchor);
+            // Set the search form, too. XSS here?
+            $('#example_filter input').val(anchor);
+        };
     };
+    updateHashFilter();
+    $(window).bind('hashchange', function() {
+        updateHashFilter();
+    });
 } );

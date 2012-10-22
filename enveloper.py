@@ -901,7 +901,10 @@ def generate_output(dta_select_data, peptide_dict,
         # This is a table-specific header, since column counts & titles change.
         out_handle.write(table_head)
         for key in peptide_dict.iterkeys():
-            print('<tr><td>' + key + '</td><td>', file=out_handle)
+            if full_details:
+                print('<tr><td>' + key + '</td><td>', file=out_handle)
+            else:
+                print('<tr><td><a href="peptide_details.html#' + key + '">' + key + '</a></td><td>', file=out_handle)
             print('</td><td>'.join([str(peptide_dict[key][x]) for x in peptide_dict_keys]), file=out_handle)
             print('</td><td>', file=out_handle)
             # Make the guesses rounded and prettier
@@ -971,9 +974,9 @@ def generate_output(dta_select_data, peptide_dict,
         # This is a table-specific header, since column counts & titles change.
         out_handle.write(table_head)
         for key in dta_select_data.iterkeys():
-            # Without full details, we print protin metadata
+            # Without full details, we print protein metadata
             if not full_details:
-                print('<tr><td>' + key + '</td><td>', file=out_handle)  # Protein Key
+                print('<tr><td><a href="protein_details.html#' + key + '">' + key + '</a></td><td>', file=out_handle)  # Protein Key
                 print('</td><td>'.join([str(dta_select_data[key]['metadata'][x]) for x in prot_metadata_keys]), file=out_handle)
                 print('</td><td>', file=out_handle)
                 # Beautify the output
@@ -987,7 +990,7 @@ def generate_output(dta_select_data, peptide_dict,
                 print('</td></tr>', file=out_handle)
                 peptides_from_key = dta_select_data[key]['peptides']
                 for peptide_id in peptides_from_key.iterkeys():
-                    print('<tr><td>' + key + '</td><td>' + peptides_from_key[peptide_id]['sequence'] + '</td><td>', file=out_handle)
+                    print('<tr><td>' + key + '</td><td><a href="peptide_summary.html#' + peptides_from_key[peptide_id]['sequence'][2:-2] + '">' + peptides_from_key[peptide_id]['sequence'] + '</a></td><td>', file=out_handle)
                     peptide_guess = peptide_predictions[peptide_id].get('guess')
                     if peptide_guess:
                         print('</td><td>'.join([str(round(peptide_predictions[peptide_id][x] * 100, 2)) for x in prot_prediction_keys]), file=out_handle)
