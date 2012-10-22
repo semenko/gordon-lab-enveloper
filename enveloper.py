@@ -793,13 +793,7 @@ def heap_windowing(enrich_list, margin, window_cutoff):
         median = False
     else:
         variance_n = M2 / n
-        # Compute the median
-        list_length = len(sorted_filtered_list)
-        if list_length % 2 == 0:
-            midpoint = list_length // 2
-            median = (sorted_filtered_list[midpoint] + sorted_filtered_list[midpoint - 1]) / 2.0
-        else:
-            median = sorted_filtered_list[(list_length - 1) // 2]
+        median = compute_median(sorted_filtered_list)
         
     return {'golden_window': golden_window,
             'guess': guess,
@@ -808,6 +802,16 @@ def heap_windowing(enrich_list, margin, window_cutoff):
             'variance_n': variance_n
             }
 
+def compute_median(a_list):
+    sorted_list = sorted(a_list)
+    list_length = len(sorted_list)
+    if list_length % 2 == 0:
+        midpoint = list_length // 2
+        median = (sorted_list[midpoint] + sorted_list[midpoint - 1]) / 2.0
+    else:
+        median = sorted_list[(list_length - 1) // 2]
+
+    return median
 
 def pick_protein_enrichment(dta_select_data, peptide_predictions):
     """
@@ -1038,13 +1042,44 @@ def generate_output(dta_select_data, peptide_dict,
     with open('.html/index_templ.html') as index_fh:
         index_template = string.Template(index_fh.read())
 
-    # Calculate some quick protein & peptide overall percentages
+
+    # Calculate some quick protein & peptide global percentages
+    protein_weighted_mean = 0
+    protein_sample_count = 0
     protein_mean = 0
-    protein_variance = 0
-    protein_median = 0
+    all_protein_guesses = []
+    n = 0
+    M2 = 0.0
+    for val in protein_predictions.itervalues():
+        if 'guess' in val:
+            n += 1
+            all_protein_guesses.append(val['guess'])
+            protein_weighted_mean += val['num_samples'] * val['guess']
+            protein_sample_count += val['num_samples']
+            delta = val['guess'] - protein_mean
+            protein_mean = protein_mean + (delta / n)
+            M2 = M2 + delta * (val['guess'] - protein_mean)
+    protein_weighted_mean /= protein_sample_count
+    protein_variance = M2 / n
+    protein_median = compute_median(all_protein_guesses)
+    
+
     peptide_mean = 0
     peptide_variance = 0
     peptide_median = 0
+    all_peptide_guesses = []
+    n = 0
+    M2 = 0.0
+    for val in peptide_predictions.itervalues():
+        if 'guess' in val:
+            n += 1
+            all_peptide_guesses.append(val['guess'])
+            delta = val['guess'] - peptide_mean
+            peptide_mean = peptide_mean + (delta / n)
+            M2 = M2 + delta * (val['guess'] - peptide_mean)
+    peptide_variance = M2 / n
+    peptide_median = compute_median(all_peptide_guesses)
+        
 
     # Metadata for the index page.
     index_template_keys = {'run_id': results_path,
@@ -1056,12 +1091,13 @@ def generate_output(dta_select_data, peptide_dict,
                            'peptide_count': len(peptide_dict.keys()),
                            'peptide_success': len(peptide_dict.keys()) - peptide_fail_count,
                            'peptide_percent': round(100 - peptide_fail_percent, 2),
-                           'protein_mean': protein_mean,
-                           'protein_variance': protein_variance,
-                           'protein_median': protein_median,
-                           'peptide_mean': peptide_mean,
-                           'peptide_variance': peptide_variance,
-                           'peptide_median': peptide_median,
+                           'protein_weighted_mean': round(protein_weighted_mean * 100, 2),
+                           'protein_mean': round(protein_mean * 100, 2),
+                           'protein_variance': round(protein_variance * 100, 2),
+                           'protein_median': round(protein_median * 100, 2),
+                           'peptide_mean': round(peptide_mean * 100, 2),
+                           'peptide_variance': round(peptide_variance * 100, 2),
+                           'peptide_median': round(peptide_median * 100, 2),
                            }
     with open('results/%s/%s' % (results_path, 'index.html'), 'w') as index:
         index.write(header_template.safe_substitute(index_active='active'))

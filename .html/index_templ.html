@@ -1,7 +1,7 @@
 <!-- MAIN //-->
 
     <div class="container"><div class="row">
-      <div class="span4">
+      <div class="span3">
         <h4>Run ID: ${run_id}</h4><br>
             <div class="bs-docs-example">
               <table class="table table-striped">
@@ -43,25 +43,25 @@
                 </table>
               </div>
         </div>
-        <div class="span4">
+        <div class="span5">
           <h4>&nbsp;</h4><br>
               <div class="bs-docs-example">
                 <table class="table table-striped">
                   <tbody>
                     <tr>
-                      <td>Mean Protein Enrichment</td>
-                      <td>${protein_mean}</td>
+                      <td>Protein Enrichment (Weighted Average)</td>
+                      <td>${protein_weighted_mean}</td>
                     </tr>
                     <tr>
-                      <td><span class="icon-arrow-right"></span> Median (x&#771;), Variance (&#963;<sup>2</sup>)</td>
-                      <td>${protein_median}, ${protein_variance}</td>
+                      <td><span class="icon-arrow-right"></span>Mean (x&#x0304;), Median (x&#771;), Variance (&#963;<sup>2</sup><sub>n</sub>)</td>
+                      <td>${protein_mean}, ${protein_median}, ${protein_variance}</td>
                     </tr>
                     <tr>
-                      <td>Mean Peptide Enrichment</td>
+                      <td>Mean Peptide Enrichment (x&#x0304;)</td>
                       <td>${peptide_mean}</td>
                     </tr>
                     <tr>
-                      <td><span class="icon-arrow-right"></span> Median (x&#771;), Variance (&#963;<sup>2</sup>)</td>
+                      <td><span class="icon-arrow-right"></span>Median (x&#771;), Variance (&#963;<sup>2</sup><sub>n</sub>)</td>
                       <td>${peptide_median}, ${peptide_variance}</td>
                     </tr>
                   </tbody>
