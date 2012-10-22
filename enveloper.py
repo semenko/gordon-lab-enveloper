@@ -745,7 +745,6 @@ def pick_FRC_NX(peptide_dict, isodist_results):
 
 def heap_windowing(enrich_list, margin, window_cutoff):
     """
-    DESCR GOES HERE    
     We're returning the variance and median of the entire prediction (not just the window)
     """
     assert(margin > 0 and margin < 1)
@@ -794,13 +793,14 @@ def heap_windowing(enrich_list, margin, window_cutoff):
     else:
         variance_n = M2 / n
         median = compute_median(sorted_filtered_list)
-        
+
     return {'golden_window': golden_window,
             'guess': guess,
             'mean': mean,
             'median': median,
             'variance_n': variance_n
             }
+
 
 def compute_median(a_list):
     sorted_list = sorted(a_list)
@@ -812,6 +812,7 @@ def compute_median(a_list):
         median = sorted_list[(list_length - 1) // 2]
 
     return median
+
 
 def pick_protein_enrichment(dta_select_data, peptide_predictions):
     """
@@ -1042,8 +1043,7 @@ def generate_output(dta_select_data, peptide_dict,
     with open('.html/index_templ.html') as index_fh:
         index_template = string.Template(index_fh.read())
 
-
-    # Calculate some quick protein & peptide global percentages
+    # Calculate some quick protein percentages
     protein_weighted_mean = 0
     protein_sample_count = 0
     protein_mean = 0
@@ -1062,8 +1062,8 @@ def generate_output(dta_select_data, peptide_dict,
     protein_weighted_mean /= protein_sample_count
     protein_variance = M2 / n
     protein_median = compute_median(all_protein_guesses)
-    
 
+    # Calculate some quick peptide percentages
     peptide_mean = 0
     peptide_variance = 0
     peptide_median = 0
@@ -1079,7 +1079,6 @@ def generate_output(dta_select_data, peptide_dict,
             M2 = M2 + delta * (val['guess'] - peptide_mean)
     peptide_variance = M2 / n
     peptide_median = compute_median(all_peptide_guesses)
-        
 
     # Metadata for the index page.
     index_template_keys = {'run_id': results_path,
