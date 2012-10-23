@@ -718,10 +718,10 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         frc_nx_log.debug('\tRaw: %s' %
                          ([isodist_data[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
-        # This is a +/- 3% margin with a minimum window of 4 values.
+        # This is a +/- 3% margin with a minimum window of 5 values.
         predictions_dict = heap_windowing(enrich_list=enrich_list,
                                           margin=0.03,
-                                          window_cutoff=4)
+                                          window_cutoff=5)
 
         # Did we get any winners? If so, hooray!
         if predictions_dict['golden_window']:
@@ -836,6 +836,7 @@ def pick_protein_enrichment(dta_select_data, peptide_predictions):
         # Print the whole list for debugging
         prot_log.debug('\tRaw: %s' % (enrich_list, ))
 
+        # This is a +/- 10% margin with a minimum window of 2.
         predictions_dict = heap_windowing(enrich_list=enrich_list,
                                           margin=0.1,
                                           window_cutoff=2)
