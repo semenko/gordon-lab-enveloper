@@ -7,7 +7,14 @@ $(document).ready(function() {
 	"sPaginationType": "bootstrap",
 	"oLanguage": {
 	    "sLengthMenu": "_MENU_ records per page"
-	}
+	},
+	"bStateSave": true,
+        "fnStateSave": function (oSettings, oData) {
+            localStorage.setItem('dt-' + window.location.pathname, JSON.stringify(oData));
+        },
+        "fnStateLoad": function (oSettings) {
+            return JSON.parse(localStorage.getItem('dt-' + window.location.pathname));
+        }
     } );
     // Anything starting with a #
     function updateHashFilter() {

@@ -39,7 +39,14 @@ $(document).ready(function() {
         ],
         "aaSortingFixed": [[ 0, 'asc' ]],
         "aaSorting": [[ 1, 'asc' ]],
-        "sDom": 'lfr<"giveHeight"t>ip'
+        "sDom": 'lfr<"giveHeight"t>ip',
+	"bStateSave": true,
+        "fnStateSave": function (oSettings, oData) {
+            localStorage.setItem('dt-' + window.location.pathname, JSON.stringify(oData));
+        },
+        "fnStateLoad": function (oSettings) {
+            return JSON.parse(localStorage.getItem('dt-' + window.location.pathname));
+        }
     });
     // Anything starting with a #
     function updateHashFilter() {
