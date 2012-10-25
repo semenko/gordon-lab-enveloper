@@ -691,13 +691,20 @@ def pick_FRC_NX(peptide_dict, isodist_results):
     # The code below does:
     #  1. For the N_PERCENT_RANGE values [0, 10, 20 ...], take each predicted FRC_NX and ...
     #  2. Add it to a list (or heapq if you have a ton of these and want O(lgn) )
-    #  3. Loop over the list (pop the heap), looking for values within 1% of each other
-    #    - If yes, continue until >= 4 values are within 1% of each other
+    #  3. Loop over the list (pop the heap), looking for values within N% of each other
+    #    - If yes, continue until >= M values are within N% of each other
     #    - If no, move to the next queue entry
-    #  4. If >=4 FRC_NX predictions are within 1% of each other, return their mean, otherwise,
+    #  4. If >=M FRC_NX predictions are within N% of each other, return their mean, otherwise,
     #    we refuse to make an FRC_NX enrichment prediction.
     #
     # WARNING: If you make modifications to N_PERCENT_RANGE, you may wish to tweak this approach.
+
+    # These are the parameters for windowing.
+    # This is a +/- 3% margin with a minimum window of 5 values.
+    margin = 0.03
+    window_cutoff = 5
+    frc_nx_log.info('Peptide windowing parameters: Margin %s, Window: %s,' % (margin, window_cutoff))
+
     peptide_predictions = {}
     fail_count = 0
     for peptide_id in peptide_dict.iterkeys():
@@ -718,10 +725,9 @@ def pick_FRC_NX(peptide_dict, isodist_results):
         frc_nx_log.debug('\tRaw: %s' %
                          ([isodist_data[percent]['frc_nx'] for percent in N_PERCENT_RANGE]))
 
-        # This is a +/- 3% margin with a minimum window of 5 values.
         predictions_dict = heap_windowing(enrich_list=enrich_list,
-                                          margin=0.03,
-                                          window_cutoff=5)
+                                          margin=margin,
+                                          window_cutoff=window_cutoff)
 
         # Did we get any winners? If so, hooray!
         if predictions_dict['golden_window']:
@@ -826,6 +832,13 @@ def pick_protein_enrichment(dta_select_data, peptide_predictions):
 
     # This is a very similar approach to the above windowed algorithm.
     # Here, we're trying to choose overall protein enrichment given the peptide enrichments.
+
+    # These are the parameters for windowing.
+    # This is a +/- 10% margin with a minimum window of 2 values.
+    margin = 0.10
+    window_cutoff = 2
+    prot_log.info('Protein windowing parameters: Margin %s, Window: %s,' % (margin, window_cutoff))
+
     for protein_id in dta_select_data.iterkeys():
         enrich_list = []
         # peptide_count = dta_select_data[protein_id]['metadata']['seq_count']
@@ -836,10 +849,9 @@ def pick_protein_enrichment(dta_select_data, peptide_predictions):
         # Print the whole list for debugging
         prot_log.debug('\tRaw: %s' % (enrich_list, ))
 
-        # This is a +/- 10% margin with a minimum window of 2.
         predictions_dict = heap_windowing(enrich_list=enrich_list,
-                                          margin=0.1,
-                                          window_cutoff=2)
+                                          margin=margin,
+                                          window_cutoff=window_cutoff)
 
         # Make a dict to hold results
         protein_predictions[protein_id] = {}
