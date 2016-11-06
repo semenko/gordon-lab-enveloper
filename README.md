@@ -6,7 +6,7 @@ Mass spec partial isotopic enrichment predictions using isodist
 
 ----------------
 
-![Protein Enrichment](screenshots/main-page.png?raw=true)
+![Protein Enrichment](screenshots/protein-enrichment.png?raw=true)
 
 ----------------
 
