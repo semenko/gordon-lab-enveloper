@@ -1,4 +1,6 @@
-Mass spec partial isotopic enrichment predictions using isodist
+# Enveloper
+
+Perform mass spec partial isotopic enrichment predictions using isodist
 
 ----------------
 
@@ -10,4 +12,4 @@ Mass spec partial isotopic enrichment predictions using isodist
 
 ----------------
 
-![Sample Envelope](screenshots/50 (1).png?raw=true)
+![Sample Envelope](screenshots/50.png?raw=true)
